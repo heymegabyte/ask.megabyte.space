@@ -434,7 +434,11 @@ test('e2e: first sync SEEDS pre-existing answers from the snapshot + posts an ap
   const out = JSON.parse(r.stdout);
   assert.equal(out.seeded, true, 'first sync reports it seeded from the snapshot');
   assert.equal(out.events, 0, 'delta carried zero events (answer predates enrollment)');
-  assert.equal(out.answered.length, 1, 'the pre-existing answered question was surfaced by the seed');
+  assert.equal(
+    out.answered.length,
+    1,
+    'the pre-existing answered question was surfaced by the seed',
+  );
   assert.equal(out.answered[0].dedupKey, 'brand-primary-color');
   assert.equal(out.receiptsPosted, 1, 'one applied receipt posted for the folded decision');
 
@@ -458,10 +462,18 @@ test('e2e: first sync SEEDS pre-existing answers from the snapshot + posts an ap
   const receipt = reqs.find((q) => q.url.endsWith('/receipts') && q.method === 'POST');
   assert.ok(receipt, 'an applied receipt was posted to the room');
   assert.equal(receipt.body.questionId, 'q_000000000000aaaa');
-  assert.equal(receipt.body.answerId, 'a_000000000000bbbb', 'receipt cites the latest answer revision');
+  assert.equal(
+    receipt.body.answerId,
+    'a_000000000000bbbb',
+    'receipt cites the latest answer revision',
+  );
   assert.equal(receipt.body.state, 'applied');
   assert.equal(receipt.body.status, 'applied_to_project');
-  assert.deepEqual(receipt.body.affectedPaths, ['docs/ask/decisions.md'], 'receipt points at decisions.md');
+  assert.deepEqual(
+    receipt.body.affectedPaths,
+    ['docs/ask/decisions.md'],
+    'receipt points at decisions.md',
+  );
   for (const req of reqs) if (req.body && typeof req.body === 'object') assertNoForbidden(req.body);
 
   // Idempotency: a SECOND sync must NOT re-seed, NOT post another receipt, and
