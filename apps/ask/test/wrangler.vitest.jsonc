@@ -1,0 +1,35 @@
+{
+  // Test-only Wrangler config for @cloudflare/vitest-pool-workers.
+  //
+  // WHY THIS EXISTS (not an edit to the production ./wrangler.jsonc, which is
+  // out of scope): the pool pins its own bundled wrangler (3.109.1) which
+  // predates the ARRAY form of `assets.run_worker_first`. The production
+  // wrangler.jsonc uses `run_worker_first: ["/api/*", ...]` — valid under the
+  // project wrangler 4.x, rejected by the pool's older bundled parser. The
+  // asset-routing heuristic is irrelevant to worker-level `SELF.fetch` specs
+  // (they always hit the Worker), so this mirror drops that one key and keeps
+  // everything the Worker + Room DO actually need (DB, ROOM, vars, migration).
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "ask-megabyte-space",
+  "main": "../worker/index.ts",
+  // Pinned to the max date the pool's bundled workerd supports (prod uses 2026-09-23).
+  "compatibility_date": "2025-02-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SERVICE_ORIGIN": "https://ask.megabyte.space",
+    "SHARED_AUTH_ISSUER": "https://projectsites.dev",
+    "BILLING_GRACE_DAYS": "7"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOM", "class_name": "RoomDurableObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDurableObject"] }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ask-registry",
+      "database_id": "969a3deb-c32b-45d2-b9e6-6682953e1d41",
+      "migrations_dir": "../migrations"
+    }
+  ]
+}

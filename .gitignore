@@ -39,3 +39,6 @@ e2e/screenshots/
 # local screenshot artifacts
 ask-*.png
 e2e/node_modules
+apps/ask/test-results/
+apps/ask/playwright-report/
+.last-run.json
