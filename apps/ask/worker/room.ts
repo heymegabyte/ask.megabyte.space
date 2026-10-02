@@ -185,7 +185,7 @@ export class RoomDurableObject extends DurableObject<Env> {
         ts,
         JSON.stringify(question),
       );
-      this.append('question.created', 0, { questionId: question.id, title: question.title });
+      this.append('question.created', 0, { question });
       created += 1;
       out.push(question);
     }
@@ -236,7 +236,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       JSON.stringify(question),
       questionId,
     );
-    this.append('answer.created', revision, { questionId, answerId: answer.id });
+    this.append('answer.created', revision, { answer });
     return answer;
   }
 
@@ -261,7 +261,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       install.lastSeenAt,
       JSON.stringify(install),
     );
-    this.append('agent.enrolled', 0, { installId: install.id, agent: install.agent });
+    this.append('agent.enrolled', 0, { agent: install });
     return { install, token };
   }
 
@@ -303,11 +303,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       this.sql.exec('UPDATE answers SET data = ? WHERE id = ?', JSON.stringify(answer), answer.id);
     }
     this.sql.exec('UPDATE agents SET last_seen = ? WHERE id = ?', receipt.createdAt, installId);
-    this.append('receipt.recorded', 0, {
-      installId,
-      answerId: receipt.answerId,
-      state: receipt.state,
-    });
+    this.append('receipt.recorded', 0, { receipt });
     return receipt;
   }
 
@@ -316,7 +312,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (!row) throw new RoomError('room_not_found', 404);
     if (row.owner_principal !== callerPrincipal) throw new RoomError('forbidden', 403);
     this.sql.exec('UPDATE meta SET slug = ?, updated_at = ? WHERE id = ?', slug, now(), row.id);
-    this.append('room.renamed', 0, { slug });
+    this.append('room.renamed', 0, { slug, room: this.toRoom(this.metaRow()!) });
     return this.toRoom(this.metaRow()!);
   }
 
@@ -333,7 +329,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       now(),
       row.id,
     );
-    this.append('room.visibility_changed', epoch, { visibility, epoch });
+    this.append('room.visibility_changed', epoch, { visibility, epoch, room: this.toRoom(this.metaRow()!) });
     if (visibility === 'private') {
       for (const ws of this.ctx.getWebSockets()) {
         const meta = this.wsMeta(ws);
@@ -365,7 +361,9 @@ export class RoomDurableObject extends DurableObject<Env> {
     const meta: WsMeta = { role, epoch: room.visibility_epoch, participantId, handle };
     server.serializeAttachment(meta);
     server.send(JSON.stringify({ type: 'hello', cursor: String(room.revision), epoch: room.visibility_epoch }));
-    this.append('participant.joined', 0, { participantId, handle });
+    this.append('participant.joined', 0, {
+      participant: { id: participantId, type: role === 'owner' ? 'owner' : 'guest', handle, role, connected: true, lastSeenAt: now() },
+    });
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -387,7 +385,10 @@ export class RoomDurableObject extends DurableObject<Env> {
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
     const meta = this.wsMeta(ws);
-    if (meta) this.append('participant.left', 0, { participantId: meta.participantId });
+    if (meta)
+      this.append('participant.left', 0, {
+        participant: { id: meta.participantId, type: meta.role === 'owner' ? 'owner' : 'guest', handle: meta.handle, role: meta.role, connected: false, lastSeenAt: now() },
+      });
   }
 
   override async webSocketError(): Promise<void> {

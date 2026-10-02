@@ -40,8 +40,17 @@ app.use('*', async (c, next) => {
   if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store');
 });
 
+/** RoomError thrown INSIDE the DO loses its prototype across JSRPC — map by message. */
+const DO_ERROR_STATUS: Record<string, ContentfulStatusCode> = {
+  question_not_found: 404,
+  room_not_found: 404,
+  forbidden: 403,
+};
+
 app.onError((e, c) => {
   if (e instanceof RoomError) return err(c, e.code, e.status as ContentfulStatusCode);
+  const mapped = e instanceof Error ? DO_ERROR_STATUS[e.message] : undefined;
+  if (mapped) return err(c, (e as Error).message, mapped);
   console.error('unhandled', e);
   return err(c, 'internal_error', 500);
 });

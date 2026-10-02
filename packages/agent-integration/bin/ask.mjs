@@ -718,7 +718,7 @@ async function cmdAsk(args) {
   const raw = args.stdin
     ? readStdin()
     : args.file
-      ? readFileSync(abs(args.file), 'utf8')
+      ? readFileSync(resolve(args.file), 'utf8') // user-supplied path: honor absolute OR cwd-relative
       : undefined;
   if (!raw) die(EXIT.USAGE, 'usage: ask ask --file questions.json  |  --stdin');
 
