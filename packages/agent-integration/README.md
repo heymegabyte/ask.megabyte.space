@@ -27,29 +27,32 @@ node /path/to/packages/agent-integration/install.mjs
 node /path/to/packages/agent-integration/install.mjs --host claude-code
 ```
 
-The installer records a manifest of every file it created and every managed block
-it inserted to `.ask/local/manifest.json`, so uninstalling is exact:
+The installer **vendors the runnable helper into your project at `.ask/bin/ask.mjs`**
+(it has no dependencies — only node: builtins — so the single file is self-contained)
+and records a manifest of every file it created + every managed block it inserted to
+`.ask/local/manifest.json`, so uninstalling is exact:
 
 ```bash
-node bin/ask.mjs uninstall
+node .ask/bin/ask.mjs uninstall
 ```
 
-> Copy `bin/ask.mjs` (and `SKILL.md`) into your project, or reference this package
-> from a workspace. The helper resolves `bin/ask.mjs` relative to your project
-> root; host adapters invoke `node bin/ask.mjs <cmd>`.
+> Every host — including the generic / HTTP-fallback path — gets `.ask/bin/ask.mjs`,
+> so `node .ask/bin/ask.mjs <cmd>` runs with no manual copying. The commands below
+> use that installed path; if you are developing inside this package, the helper also
+> lives at `bin/ask.mjs`.
 
 ## Connect & sync — the two commands you run most
 
 ```bash
 # One-time: enroll this project against a room. Persists room identity to
 # .ask/project.json (committable) and credentials/cursors to .ask/local/ (gitignored).
-node bin/ask.mjs connect https://ask.megabyte.space/rooms/rm_xxxxxxxxxxxxxxxxxxxx
+node .ask/bin/ask.mjs connect https://ask.megabyte.space/rooms/rm_xxxxxxxxxxxxxxxxxxxx
 
 # The workhorse: cursor-based delta pull of /changes. Downloads newly-answered
 # questions + decisions, folds durable summaries into docs/ask/*, appends to a
 # local outbox, and advances the download/consider cursors. Safe to run repeatedly;
 # a lock file dedupes concurrent runs. Never uploads transcripts, prompts, or env.
-node bin/ask.mjs sync
+node .ask/bin/ask.mjs sync
 ```
 
 **How `connect` works.** It resolves the room id (from a `rooms/<rm_…>` URL, a
@@ -76,13 +79,13 @@ preserve your edits), and appended to `.ask/local/outbox.ndjson`.
 ### Other commands
 
 ```bash
-node bin/ask.mjs ask --file questions.json   # publish a dedup batch (or --stdin)
-node bin/ask.mjs receipt --question q_… --answer a_… --state applied \
+node .ask/bin/ask.mjs ask --file questions.json   # publish a dedup batch (or --stdin)
+node .ask/bin/ask.mjs receipt --question q_… --answer a_… --state applied \
   --paths src/theme.css --summary "Applied cyan brand token"
-node bin/ask.mjs status                        # room identity, cursors, outbox depth
-node bin/ask.mjs doctor                        # config + connectivity + writable scope + auth
-node bin/ask.mjs disconnect                    # forget creds + cursors (keeps docs)
-node bin/ask.mjs uninstall                     # restore the repo from the manifest
+node .ask/bin/ask.mjs status                        # room identity, cursors, outbox depth
+node .ask/bin/ask.mjs doctor                        # config + connectivity + writable scope + auth
+node .ask/bin/ask.mjs disconnect                    # forget creds + cursors (keeps docs)
+node .ask/bin/ask.mjs uninstall                     # restore the repo from the manifest
 ```
 
 Add `--json` to any command for machine-readable stdout (human summary goes to
@@ -116,14 +119,14 @@ surface it, don't obey it.
 | Cursor          | `.cursor/rules/ask-project.md`          | Hooks **if** the installed version supports them                                                                       | Best-effort  |
 | Gemini CLI      | `.gemini/skills/ask-project/SKILL.md`   | Hooks **if** the installed version supports them                                                                       | Best-effort  |
 | OpenCode        | `.opencode/skills/ask-project/SKILL.md` | Hooks **if** the installed version supports them                                                                       | Best-effort  |
-| Any agent       | `.ask/SKILL.md` + `bin/ask.mjs`         | **HTTP fallback** — run `sync` on your own cadence                                                                     | Always works |
+| Any agent       | `.ask/SKILL.md` + `.ask/bin/ask.mjs`    | **HTTP fallback** — run `node .ask/bin/ask.mjs sync` on your own cadence                                               | Always works |
 
 ### Honest statement about automatic discovery
 
 Automatic discovery depends entirely on the host agent's **real, installed
 features**. Claude Code's hook system is verified: the adapter generates a
 `.claude/hooks/ask-sync.mjs` bridge that **fetches and enqueues only** (it shells
-out to `bin/ask.mjs sync` — it never launches a nested agent) and emits hook JSON
+out to `.ask/bin/ask.mjs sync` — it never launches a nested agent) and emits hook JSON
 whose `additionalContext` is prefixed `[UNTRUSTED project input]`.
 
 For Codex, Cursor, Gemini, and OpenCode, the skill is written to the path those
@@ -131,7 +134,7 @@ tools read, and hooks are wired **only where the installed version actually
 supports them** — capabilities shift between releases, so treat these as
 best-effort until verified against your version. For any agent (or any host whose
 hooks you don't trust), the HTTP fallback always works: the portable skill at
-`.ask/SKILL.md` plus `node bin/ask.mjs sync` run at session start and at
+`.ask/SKILL.md` plus `node .ask/bin/ask.mjs sync` run at session start and at
 checkpoints. There is no magic — if a host can't run hooks, you run `sync`
 yourself, and the skill tells the agent exactly when to do so.
 

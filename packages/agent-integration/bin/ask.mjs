@@ -994,6 +994,7 @@ function cmdUninstall(args) {
     join('.claude', 'skills'),
     join('.claude', 'hooks'),
     '.claude',
+    join(ASK_DIR, 'bin'),
     ASK_DIR,
     join('docs', 'ask'),
     'docs',

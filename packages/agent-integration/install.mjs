@@ -147,6 +147,9 @@ function parseArgs(argv) {
 // Install
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Stable in-project path for the runnable helper (SKILL.md/README reference this). */
+const HELPER_PATH = '.ask/bin/ask.mjs';
+
 async function installForHost(hostKey) {
   const host = HOSTS[hostKey];
   const created = [];
@@ -158,6 +161,13 @@ async function installForHost(hostKey) {
   if (host.skillPath !== '.ask/SKILL.md') {
     created.push(copyIfAbsent('SKILL.md', host.skillPath));
   }
+
+  // Always vendor the runnable helper into the project at a stable path. The skill
+  // + README call `node .ask/bin/ask.mjs …`; without this copy a generic / HTTP-
+  // fallback host has no helper to run (its only local imports are node: builtins,
+  // so the single file is self-contained — nothing else to copy). Idempotent:
+  // copyIfAbsent preserves an existing helper and records it in the manifest.
+  created.push(copyIfAbsent(join('bin', 'ask.mjs'), HELPER_PATH));
 
   // Claude Code: run the full adapter (host skill already covered; adds hooks + settings).
   let automation = host.automation;
@@ -177,6 +187,7 @@ async function installForHost(hostKey) {
     hostKey,
     label: host.label,
     skillPath: host.skillPath,
+    helperPath: HELPER_PATH,
     automation,
     created: [...new Set(created)],
   };
@@ -195,11 +206,14 @@ async function main() {
   process.stderr.write(`ask ✓ installed for ${result.label}\n`);
   process.stderr.write(`  skill     → ${result.skillPath}\n`);
   process.stderr.write(`  portable  → .ask/SKILL.md\n`);
+  process.stderr.write(`  helper    → ${result.helperPath}\n`);
   process.stderr.write(`  automation→ ${result.automation}\n`);
-  process.stderr.write(`\nNext: node bin/ask.mjs connect <roomUrl>  →  node bin/ask.mjs sync\n`);
+  process.stderr.write(
+    `\nNext: node ${result.helperPath} connect <roomUrl>  →  node ${result.helperPath} sync\n`,
+  );
   if (hostKey === 'generic') {
     process.stderr.write(
-      `\nThis host has no verified hook support — run \`node bin/ask.mjs sync\` on a\n` +
+      `\nThis host has no verified hook support — run \`node ${result.helperPath} sync\` on a\n` +
         `cadence yourself (e.g. at session start + checkpoints). The skill explains the loop.\n`,
     );
   }

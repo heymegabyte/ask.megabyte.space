@@ -133,7 +133,11 @@ import process from 'node:process';
 
 const THROTTLE_MS = ${THROTTLE_SECONDS} * 1000;
 const ROOT = process.cwd();
-const HELPER = join(ROOT, 'bin', 'ask.mjs');
+// Prefer the installer-vendored helper at .ask/bin/ask.mjs; fall back to a
+// project-root bin/ask.mjs (dev-in-package case).
+const HELPER = [join(ROOT, '.ask', 'bin', 'ask.mjs'), join(ROOT, 'bin', 'ask.mjs')].find((p) =>
+  existsSync(p),
+);
 const STAMP = join(ROOT, '.ask', 'local', '.last-hook-sync');
 const PROJECT = join(ROOT, '.ask', 'project.json');
 
@@ -161,8 +165,8 @@ function writeStamp() {
 function main() {
   const event = process.argv[2] || 'UserPromptSubmit';
 
-  // No Ask room wired into this project → do nothing, exit clean.
-  if (!existsSync(PROJECT) || !existsSync(HELPER)) {
+  // No Ask room wired into this project (or no helper found) → do nothing, exit clean.
+  if (!existsSync(PROJECT) || !HELPER) {
     process.exit(0);
   }
 

@@ -35,3 +35,7 @@ e2e/screenshots/
 # claude
 .claude/settings.local.json
 .claude/worktrees/
+
+# local screenshot artifacts
+ask-*.png
+e2e/node_modules
