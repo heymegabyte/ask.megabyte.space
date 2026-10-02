@@ -137,6 +137,21 @@ test('parseArgs handles flags, values, and positionals', () => {
   assert.equal(a.paths, 'a,b');
 });
 
+test('latestAnswersByQuestion picks the highest-revision answer per question', () => {
+  const latest = mod.latestAnswersByQuestion([
+    { id: 'a_1', questionId: 'q_1', revision: 0, text: 'first' },
+    { id: 'a_2', questionId: 'q_1', revision: 2, text: 'latest' },
+    { id: 'a_3', questionId: 'q_1', revision: 1, text: 'middle' },
+    { id: 'a_9', questionId: 'q_2', revision: 0, text: 'only' },
+  ]);
+  assert.equal(latest.get('q_1').id, 'a_2', 'highest revision wins for q_1');
+  assert.equal(latest.get('q_1').text, 'latest');
+  assert.equal(latest.get('q_2').id, 'a_9', 'single answer wins for q_2');
+  assert.equal(latest.size, 2);
+  // Malformed entries are ignored, not thrown on.
+  assert.equal(mod.latestAnswersByQuestion([{ text: 'no ids' }, null]).size, 0);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Layer 2 — end-to-end against a recording mock service (separate process)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +215,10 @@ function ask(helper, cwd, origin, argv, input) {
 test('e2e: connect → sync → ask → receipt drives cursors, outbox, and safe request bodies', async (t) => {
   const cwd = makeTempProject();
   const record = join(cwd, 'requests.jsonl');
+  // Honest-empty snapshot so first-sync SEEDING folds nothing and the DELTA
+  // drives the answered question (this test exercises the delta path; the
+  // dedicated seeding test below covers pre-existing answers).
+  setMode(record, 'empty-seed');
   const { origin, child } = await startMock(record);
   t.after(() => {
     child.kill('SIGTERM');
@@ -391,6 +410,73 @@ test('e2e: auth failure exits non-zero (never silently retried)', async (t) => {
   // Exactly one /changes attempt — 401 is never retried.
   const changesAttempts = readRequests(record).filter((q) => q.url.includes('/changes'));
   assert.equal(changesAttempts.length, 1, 'auth failure made exactly one request (no retry storm)');
+});
+
+test('e2e: first sync SEEDS pre-existing answers from the snapshot + posts an applied receipt (§9/§22)', async (t) => {
+  const cwd = makeTempProject();
+  const record = join(cwd, 'requests.jsonl');
+  // Delta is EMPTY; the answered question exists ONLY in the snapshot — the exact
+  // bug the coordinator hit (sync printed "0 answered" + wrote no docs).
+  setMode(record, 'seed-only');
+  const { origin, child } = await startMock(record);
+  t.after(() => {
+    child.kill('SIGTERM');
+    rmSync(cwd, { recursive: true, force: true });
+  });
+  const lh = join(cwd, 'bin', 'ask.mjs');
+
+  let r = ask(lh, cwd, origin, ['connect', `${origin}/rooms/${ROOM_ID}`]);
+  assert.equal(r.status, 0, `connect failed: ${r.stderr}`);
+  setMode(record, 'seed-only'); // mock truncates the record on boot but not the mode file
+
+  r = ask(lh, cwd, origin, ['sync', '--json']);
+  assert.equal(r.status, 0, `sync failed: ${r.stderr}`);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.seeded, true, 'first sync reports it seeded from the snapshot');
+  assert.equal(out.events, 0, 'delta carried zero events (answer predates enrollment)');
+  assert.equal(out.answered.length, 1, 'the pre-existing answered question was surfaced by the seed');
+  assert.equal(out.answered[0].dedupKey, 'brand-primary-color');
+  assert.equal(out.receiptsPosted, 1, 'one applied receipt posted for the folded decision');
+
+  // decisions.md created with a managed block + the folded decision.
+  const decisionsDoc = readFileSync(join(cwd, 'docs', 'ask', 'decisions.md'), 'utf8');
+  assert.match(decisionsDoc, /BEGIN ASK/, 'decisions.md has the managed block');
+  assert.match(decisionsDoc, /END ASK/, 'decisions.md managed block is closed');
+  assert.match(decisionsDoc, /Primary color\? → Cyan/, 'the decision summary is present');
+  assert.match(decisionsDoc, /from Ask room/, 'provenance labelled as untrusted room input');
+  // context doc also seeded.
+  assert.match(
+    readFileSync(join(cwd, 'docs', 'ask', 'project-context.md'), 'utf8'),
+    /Primary color\?/,
+    'project-context.md seeded too',
+  );
+
+  // The receipt request is shaped correctly: applied, points at decisions.md.
+  const reqs = readRequests(record);
+  const snapshotHit = reqs.find((q) => q.url === `/api/v1/rooms/${ROOM_ID}` && q.method === 'GET');
+  assert.ok(snapshotHit, 'first sync fetched the room snapshot');
+  const receipt = reqs.find((q) => q.url.endsWith('/receipts') && q.method === 'POST');
+  assert.ok(receipt, 'an applied receipt was posted to the room');
+  assert.equal(receipt.body.questionId, 'q_000000000000aaaa');
+  assert.equal(receipt.body.answerId, 'a_000000000000bbbb', 'receipt cites the latest answer revision');
+  assert.equal(receipt.body.state, 'applied');
+  assert.equal(receipt.body.status, 'applied_to_project');
+  assert.deepEqual(receipt.body.affectedPaths, ['docs/ask/decisions.md'], 'receipt points at decisions.md');
+  for (const req of reqs) if (req.body && typeof req.body === 'object') assertNoForbidden(req.body);
+
+  // Idempotency: a SECOND sync must NOT re-seed, NOT post another receipt, and
+  // NOT duplicate the decisions.md line.
+  const receiptsBefore = reqs.filter((q) => q.url.endsWith('/receipts')).length;
+  r = ask(lh, cwd, origin, ['sync', '--json']);
+  assert.equal(r.status, 0, `second sync failed: ${r.stderr}`);
+  const out2 = JSON.parse(r.stdout);
+  assert.equal(out2.seeded, false, 'second sync does not re-seed');
+  assert.equal(out2.receiptsPosted, 0, 'second sync posts no additional receipts');
+  const receiptsAfter = readRequests(record).filter((q) => q.url.endsWith('/receipts')).length;
+  assert.equal(receiptsAfter, receiptsBefore, 'no duplicate receipt posted on re-sync');
+  const decisionsAfter = readFileSync(join(cwd, 'docs', 'ask', 'decisions.md'), 'utf8');
+  const occurrences = decisionsAfter.split('Primary color? → Cyan').length - 1;
+  assert.equal(occurrences, 1, 'the decision line appears exactly once (no duplicate on re-sync)');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

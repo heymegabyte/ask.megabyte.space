@@ -80,25 +80,47 @@ const server = createServer((req, res) => {
       if (req.headers['authorization'] !== VALID_AUTH) {
         return send(401, { error: 'unauthorized', code: 'auth_required' });
       }
-      if (currentMode() === 'snapshot') {
+      const mode = currentMode();
+      if (mode === 'snapshot') {
         return send(200, { events: [], cursor: 'seq:0', snapshotRequired: true });
+      }
+      // `seed-only` → the delta is EMPTY; the pre-existing answered question is
+      // reachable ONLY via the snapshot seed (the exact §9/§22 bug scenario).
+      if (mode === 'seed-only') {
+        return send(200, { events: [], cursor: 'seq:2', snapshotRequired: false });
       }
       return send(200, CHANGES);
     }
 
     if (url === `/api/v1/rooms/${ROOM_ID}`) {
+      // `empty-seed` mode → honest-empty snapshot (no pre-existing answered
+      // questions), so first-sync seeding folds nothing and the delta drives the
+      // answered question. Any other mode → snapshot carries a pre-answered
+      // question (exercises the §9/§22 seed-on-first-sync path).
+      const emptySeed = currentMode() === 'empty-seed';
       return send(200, {
         room: { id: ROOM_ID, slug: 'sunny-harbor', revision: 2 },
-        questions: [
-          {
-            id: 'q_000000000000aaaa',
-            dedupKey: 'brand-primary-color',
-            title: 'Primary color?',
-            state: 'answered',
-            latestAnswerText: 'Cyan',
-          },
-        ],
-        answers: [{ id: 'a_000000000000bbbb', questionId: 'q_000000000000aaaa', text: 'Cyan' }],
+        questions: emptySeed
+          ? []
+          : [
+              {
+                id: 'q_000000000000aaaa',
+                dedupKey: 'brand-primary-color',
+                title: 'Primary color?',
+                state: 'answered',
+                latestAnswerText: 'Cyan',
+              },
+            ],
+        answers: emptySeed
+          ? []
+          : [
+              {
+                id: 'a_000000000000bbbb',
+                questionId: 'q_000000000000aaaa',
+                revision: 1,
+                text: 'Cyan',
+              },
+            ],
         receipts: [],
         agents: [],
         participants: [],
