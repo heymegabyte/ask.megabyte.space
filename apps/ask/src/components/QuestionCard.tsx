@@ -18,7 +18,7 @@
  * question can't steal focus or reorder the card you're working on. Unsent drafts
  * are visually distinct (dashed accent rail + "Draft" tag) from saved answers.
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Badge, Button, Checkbox, Input, InputArea, Radio, Tooltip } from '@cloudflare/kumo';
 import {
   ChatCircleDots,
@@ -33,7 +33,7 @@ import {
 import type { AnswerRevision, AnswerValue, Question } from '@ask/contracts';
 import { answerStatusChip } from '../status';
 import type { PendingAnswer } from '../useRoom';
-import { Card, Heading, MetaLine, Mono } from './ui';
+import { Card, Heading, MetaLine } from './ui';
 
 /** Draft held in the parent, keyed by question id — survives card switches. */
 export interface QuestionDraft {
@@ -313,6 +313,7 @@ export function QuestionCard({
 }: Props) {
   const controlId = useId();
   const [explainState, setExplainState] = useState<'idle' | 'asking' | 'requested' | 'sent'>('idle');
+  const [editing, setEditing] = useState(false);
   const value = draftToValue(question, draft);
   const freeText = draft.text.trim() || undefined;
   const sending = pending?.status === 'sending';
@@ -320,6 +321,12 @@ export function QuestionCard({
   const chip = answer ? answerStatusChip(answer.status) : undefined;
   // An unsent draft = the user has typed/selected something but there's no saved answer yet.
   const isUnsentDraft = hasInput && !answer && !sending;
+  // A saved answer (no unsent draft) renders as ANSWERED on load — the core of "it should show up as answered on reload".
+  const isAnswered = Boolean(answer) && !isUnsentDraft && !sending;
+  // Leave edit mode whenever a fresh committed answer arrives, so the answered view stays authoritative.
+  useEffect(() => {
+    if (answer) setEditing(false);
+  }, [answer?.id]);
 
   const explain = async () => {
     if (explainState === 'asking') return;
@@ -387,6 +394,44 @@ export function QuestionCard({
         ) : null}
       </header>
 
+      {/* On reload, a saved answer shows as ANSWERED (not a blank form) with a Change-answer affordance. */}
+      {isAnswered && !editing ? (
+        <div className="flex flex-col gap-3">
+          <div
+            data-testid="answered-view"
+            className="flex items-start gap-2.5 rounded-xl border border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-3.5 py-3"
+          >
+            <CheckCircle size={18} weight="fill" className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]" />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[0.72rem] font-semibold uppercase tracking-wider text-[color:var(--ask-accent)]">
+                Your answer
+              </span>
+              <span className="text-[0.95rem] text-white/90">{answeredValueText(question, answer!)}</span>
+            </div>
+          </div>
+          <footer className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" icon={PencilLine} data-testid="answer-edit" onClick={() => setEditing(true)}>
+              Change answer
+            </Button>
+            <Button
+              variant="ghost"
+              icon={ChatCircleDots}
+              loading={explainState === 'asking'}
+              disabled={explainState === 'asking'}
+              data-testid="answer-explain"
+              onClick={() => void explain()}
+            >
+              {explainState === 'sent' ? 'Asked ✓' : explainState === 'requested' ? 'Requested' : 'Explain more'}
+            </Button>
+          </footer>
+          {explainState === 'requested' ? (
+            <p className="ask-mono text-[0.72rem] text-white/60">
+              Requested — the agent will add more detail here when it supports context requests.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <>
       {/* Line 4 — the recommendation, labeled as a suggestion, explicitly NOT pre-selected. */}
       {question.recommendation ? (
         <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-3.5 py-2.5">
@@ -472,24 +517,30 @@ export function QuestionCard({
         </Button>
       </footer>
 
-      {/* Honest note when Explain-more isn't wired yet (501). */}
-      {explainState === 'requested' ? (
-        <p className="ask-mono text-[0.72rem] text-white/60">
-          Requested — the agent will add more detail here when it supports context requests.
-        </p>
-      ) : null}
-
-      {/* When saved, echo the committed answer so the card reflects server truth. */}
-      {answer && !isUnsentDraft ? (
-        <p className="text-[0.8rem] text-white/60">
-          Your answer: <Mono>{summarizeAnswer(answer)}</Mono>
-        </p>
-      ) : null}
+          {/* Honest note when Explain-more isn't wired yet (501). */}
+          {explainState === 'requested' ? (
+            <p className="ask-mono text-[0.72rem] text-white/60">
+              Requested — the agent will add more detail here when it supports context requests.
+            </p>
+          ) : null}
+        </>
+      )}
     </Card>
   );
 }
 
-/** Short human summary of a saved answer revision for the "Your answer" echo. */
+/** Answered-view value using option LABELS (not ids) + any free-text note. */
+function answeredValueText(question: Question, a: AnswerRevision): string {
+  const v = a.value;
+  if (v?.kind === 'choice') {
+    const labels = v.selected.map((id) => question.options.find((o) => o.id === id)?.label ?? id);
+    const joined = labels.join(', ') || '—';
+    return a.text ? `${joined} — ${a.text}` : joined;
+  }
+  return summarizeAnswer(a);
+}
+
+/** Short human summary of a saved answer revision for the answered view. */
 function summarizeAnswer(a: AnswerRevision): string {
   if (a.text && !a.value) return a.text;
   const v = a.value;

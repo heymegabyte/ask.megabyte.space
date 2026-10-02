@@ -14,10 +14,14 @@ import {
   type ContextRequest,
   type CreateRoomResponse,
   CreateRoomResponse as CreateRoomResponseSchema,
+  type EnrichResponse,
+  EnrichResponse as EnrichResponseSchema,
   type IntegrationManifest,
   IntegrationManifest as IntegrationManifestSchema,
   type PostAnswerResponse,
   PostAnswerResponse as PostAnswerResponseSchema,
+  type ProjectUnderstanding,
+  type QuestionQuality,
   type Room,
   type RoomSnapshot,
   RoomSnapshot as RoomSnapshotSchema,
@@ -164,10 +168,32 @@ export async function getManifest(): Promise<IntegrationManifest> {
   return request(ROUTES.manifest, { method: 'GET' }, (d) => IntegrationManifestSchema.parse(d));
 }
 
+/**
+ * POST /rooms/<id>/enrich — owner-only manual re-scan (§6). Returns the fresh
+ * AI read + question-quality, or `{ ran:false, reason }` when enrichment is off,
+ * the AI binding is absent, there's nothing to analyze, or the budget is spent.
+ * Live clients still pick up background passes via the WS event feed; this just
+ * lets the owner ask for one on demand.
+ */
+export async function postEnrich(roomId: string): Promise<EnrichResponse> {
+  return request(ROUTES.enrich(roomId), { method: 'POST', headers: JSON_HEADERS, body: '{}' }, (d) =>
+    EnrichResponseSchema.parse(d),
+  );
+}
+
 /** WebSocket URL for a room's live event stream (same origin, ws/wss by protocol). */
 export function roomEventsWsUrl(roomId: string): string {
   const origin = window.location.origin.replace(/^http/, 'ws');
   return `${origin}${ROUTES.events(roomId)}`;
 }
 
-export type { AnswerRevision, AnswerValue, Room, RoomSnapshot, IntegrationManifest };
+export type {
+  AnswerRevision,
+  AnswerValue,
+  EnrichResponse,
+  IntegrationManifest,
+  ProjectUnderstanding,
+  QuestionQuality,
+  Room,
+  RoomSnapshot,
+};

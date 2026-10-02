@@ -29,6 +29,7 @@ import {
   CheckCircle,
   ClipboardText as ClipboardIcon,
   GitBranch,
+  Lightbulb,
   Lightning,
   Lock,
   PlugsConnected,
@@ -36,14 +37,21 @@ import {
   Receipt,
   WifiSlash,
 } from '@phosphor-icons/react';
-import type { AnswerRevision, AnswerValue, ApplicationReceipt, Question } from '@ask/contracts';
+import type {
+  AnswerRevision,
+  AnswerValue,
+  ApplicationReceipt,
+  Question,
+  QuestionQuality,
+} from '@ask/contracts';
 import { ROUTES } from '@ask/contracts';
-import { createRoom, getManifest, postContextRequest, startCheckout, ApiError } from './api';
+import { createRoom, getManifest, postContextRequest, postEnrich, startCheckout, ApiError } from './api';
 import { useRoom, type RoomStore } from './useRoom';
 import { buildSetupPrompt } from './setupPrompt';
 import { agentStatusChip, answerStatusChip } from './status';
 import { recordRecentPage } from './recentPages';
 import { RoomHeader } from './components/RoomHeader';
+import { ProjectUnderstanding } from './ProjectUnderstanding';
 import { QuestionCard, emptyDraft, type QuestionDraft } from './components/QuestionCard';
 import { Card, Eyebrow, Heading, Mono, Muted, clockTime, relativeTime, slugAccentHue } from './components/ui';
 
@@ -93,6 +101,7 @@ export function Room({ identifier, onToast = noop }: Props) {
   const [focusMode, setFocusMode] = useState(false); // mobile one-question focus view
   const [focusIndex, setFocusIndex] = useState(0);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // which queued rows are open
+  const [rescanning, setRescanning] = useState(false); // AI re-scan (§6) in flight
   const setupPromptRef = useRef<string | null>(null);
   const [setupPrompt, setSetupPrompt] = useState<string | null>(null);
 
@@ -197,6 +206,35 @@ export function Room({ identifier, onToast = noop }: Props) {
     [roomId, onToast],
   );
 
+  const rescan = useCallback(async () => {
+    if (!roomId) return;
+    setRescanning(true);
+    try {
+      const res = await postEnrich(roomId);
+      if (res.ran) {
+        // The DO also broadcasts enrichment.updated → the store merges it live.
+        onToast({ title: 'Project summary refreshed', variant: 'success' });
+      } else {
+        const why: Record<string, string> = {
+          disabled: 'AI summaries are turned off for now.',
+          unavailable: 'The AI service isn’t available right now.',
+          empty: 'Not enough questions yet to summarize.',
+          budget: 'This page has reached its AI summary limit.',
+          throttled: 'Just refreshed — try again in a moment.',
+        };
+        onToast({
+          title: 'Nothing to refresh yet',
+          description: why[res.reason ?? ''] ?? 'Try again shortly.',
+          variant: 'info',
+        });
+      }
+    } catch {
+      onToast({ title: 'Couldn’t refresh the summary', description: 'Try again shortly.', variant: 'error' });
+    } finally {
+      setRescanning(false);
+    }
+  }, [roomId, onToast]);
+
   // ── non-ready states ───────────────────────────────────────────────────────
   if (load.status === 'loading') {
     return (
@@ -269,6 +307,11 @@ export function Room({ identifier, onToast = noop }: Props) {
   const queued = ordered.slice(TOP_COUNT);
   const latestAgent = [...store.agents].sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))[0];
 
+  // AI quality verdicts, keyed by question id — drives the subtle "could be sharper" hint (§6).
+  const qualityByQuestion = new Map<string, QuestionQuality>(
+    (store.questionQuality ?? []).map((q) => [q.questionId, q]),
+  );
+
   const answerFor = (qid: string) =>
     [...store.answers].filter((a) => a.questionId === qid).sort((a, b) => b.revision - a.revision)[0];
 
@@ -292,20 +335,30 @@ export function Room({ identifier, onToast = noop }: Props) {
     }
   };
 
-  const renderCard = (q: Question, compact = false, emphasis = false) => (
-    <QuestionCard
-      key={q.id}
-      question={q}
-      answer={answerFor(q.id)}
-      pending={pending[q.id]}
-      draft={draftFor(q.id)}
-      compact={compact}
-      emphasis={emphasis}
-      onDraftChange={(next) => setDraft(q.id, next)}
-      onSubmit={(value, text) => void handleSubmit(q, value, text)}
-      onExplainMore={() => explainMore(q)}
-    />
-  );
+  const renderCard = (q: Question, compact = false, emphasis = false) => {
+    // Subtle, non-noisy "could be sharper" hint — only for a still-open question the
+    // AI flagged lame AND that carries a concrete suggestion (§6). Never for answered.
+    const quality = qualityByQuestion.get(q.id);
+    const showHint = Boolean(
+      quality?.lame && quality.improvement.trim() && q.state === 'open' && !answerFor(q.id),
+    );
+    return (
+      <div key={q.id} className="flex flex-col gap-1.5">
+        <QuestionCard
+          question={q}
+          answer={answerFor(q.id)}
+          pending={pending[q.id]}
+          draft={draftFor(q.id)}
+          compact={compact}
+          emphasis={emphasis}
+          onDraftChange={(next) => setDraft(q.id, next)}
+          onSubmit={(value, text) => void handleSubmit(q, value, text)}
+          onExplainMore={() => explainMore(q)}
+        />
+        {showHint ? <SharperHint improvement={quality!.improvement} /> : null}
+      </div>
+    );
+  };
 
   const focusQ = ordered[Math.min(focusIndex, Math.max(0, ordered.length - 1))];
 
@@ -333,6 +386,14 @@ export function Room({ identifier, onToast = noop }: Props) {
           latestAgent={latestAgent}
           setupPrompt={setupPrompt}
           onCopySetupPrompt={() => void copySetupPrompt()}
+        />
+
+        {/* AI read of the project (§6) — renders only once there's a real summary.
+            Owner gets a quiet re-scan; it updates live as answers arrive. */}
+        <ProjectUnderstanding
+          understanding={store.understanding}
+          onRescan={isOwner ? () => void rescan() : undefined}
+          rescanning={rescanning}
         />
 
         {/* Reconnecting ribbon — the WS dropped but we're retrying; state isn't lost. */}
@@ -663,6 +724,26 @@ function QueueRow({
         aria-hidden="true"
       />
     </button>
+  );
+}
+
+/** SharperHint — a subtle, clearly-AI inline note suggesting how to sharpen a
+ *  question the enrichment pass flagged as low-value (§6). Deliberately quiet:
+ *  a thin accent rail + small muted text, never a loud banner, so it guides
+ *  without nagging. aria-labeled as a note; carries no action of its own. */
+function SharperHint({ improvement }: { improvement: string }) {
+  return (
+    <p
+      role="note"
+      data-testid="question-sharper-hint"
+      className="ask-enter ml-3 flex items-start gap-1.5 border-l-2 border-[color:var(--ask-accent-line)] pl-2.5 text-[0.78rem] leading-snug text-white/55"
+    >
+      <Lightbulb size={13} weight="fill" className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]" aria-hidden="true" />
+      <span>
+        <span className="font-medium text-white/70">AI suggestion: </span>
+        {improvement}
+      </span>
+    </p>
   );
 }
 

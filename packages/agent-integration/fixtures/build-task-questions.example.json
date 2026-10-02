@@ -1,0 +1,378 @@
+{
+  "_comment": "SHAPE EXAMPLE ONLY — do not publish verbatim. This is the BUILD/ARCHITECT template the ask-project skill points to: when a coding agent is asked to BUILD or ARCHITECT a project, its architecture thinking should decompose into a question per consequential decision across the coverage dimensions and yield ~12-25 deduplicated questions (about 5 horizon:\"now\" blockers + the rest next/later). This set is tailored to a sample build — \"a team scheduling SaaS\" — spanning purpose, audience, success, scope, stack/framework, data model, auth/identity, hosting/deploy, payments, API shape, state mgmt, realtime, performance, testing, accessibility, ai_behavior, economics, distribution, maintenance. INSPECT the real repo and TAILOR to the actual project; drop any question the code or the user's instructions already answer; re-publish new batches as new decision points surface. Publish with: node bin/ask.mjs ask --file <your-tailored-file>.json",
+  "questions": [
+    {
+      "dedupKey": "primary-purpose",
+      "kind": "long_text",
+      "title": "In one sentence, what is the single scheduling problem this product must solve better than a shared calendar?",
+      "context": "The whole architecture orients around this. Pinning it now stops the build drifting into a generic calendar clone.",
+      "consequence": "Determines the core domain model (shifts vs meetings vs bookings) and which flows we build first.",
+      "category": "purpose",
+      "klass": "decision",
+      "horizon": "now",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "primary-audience",
+      "kind": "single",
+      "title": "Who schedules first — the team manager, the individual member, or an external customer booking time?",
+      "context": "Audience drives the default view, permissions, and onboarding. Each implies a very different first screen.",
+      "consequence": "Shapes the role model, the landing surface, and whether we need a public booking page in v1.",
+      "category": "audience",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "manager",
+          "label": "Team manager assigning people to slots"
+        },
+        {
+          "id": "member",
+          "label": "Individual member claiming/trading slots"
+        },
+        {
+          "id": "external",
+          "label": "External customer booking a team member"
+        },
+        {
+          "id": "mixed",
+          "label": "A mix — specify priority order"
+        }
+      ],
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "success-metric",
+      "kind": "short_text",
+      "title": "What one measurable outcome in 90 days tells us the scheduling product is working?",
+      "context": "A single success metric keeps the roadmap honest (e.g. 'teams publish a full week in under 5 min').",
+      "consequence": "Decides what we instrument, what the dashboard surfaces, and how we prioritize polish.",
+      "category": "success",
+      "klass": "decision",
+      "horizon": "next",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "launch-scope",
+      "kind": "multiple",
+      "title": "Which capabilities are in scope for the FIRST usable release?",
+      "context": "Cutting v1 to the essential scheduling path ships value sooner and de-risks the rest.",
+      "consequence": "Everything unchecked moves to a later milestone; checked items become the build plan now.",
+      "category": "scope",
+      "klass": "blocker",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "team_calendar",
+          "label": "Shared team calendar + slot assignment"
+        },
+        {
+          "id": "availability",
+          "label": "Per-member availability / time-off"
+        },
+        {
+          "id": "shift_swap",
+          "label": "Shift swap / trade requests with approval"
+        },
+        {
+          "id": "public_booking",
+          "label": "Public booking page for external guests"
+        },
+        {
+          "id": "notifications",
+          "label": "Reminders / change notifications"
+        },
+        {
+          "id": "reporting",
+          "label": "Hours / coverage reporting"
+        }
+      ],
+      "recommendation": "Recommended: shared calendar + availability + reminders for v1; defer public booking and reporting unless they are the point.",
+      "blocksWork": true
+    },
+    {
+      "dedupKey": "frontend-stack",
+      "kind": "single",
+      "title": "What frontend stack should the scheduling UI be built on?",
+      "context": "A calendar-heavy, multi-role app is a long-lived application, not a brochure site — the stack choice compounds.",
+      "consequence": "Sets the component model, state approach, SSR story, and how fast the team can add views.",
+      "category": "architecture",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "react_vite",
+          "label": "React 19 + Vite + TanStack Router (lean SPA/SSG)"
+        },
+        {
+          "id": "angular",
+          "label": "Angular + signals (large, long-lived app)"
+        },
+        {
+          "id": "no_preference",
+          "label": "No preference — recommend the best fit"
+        }
+      ],
+      "recommendation": "Recommended: Angular if this grows into a multi-role, many-view operations tool; React+Vite if it stays a focused SPA.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "scheduling-data-model",
+      "kind": "single",
+      "title": "How should recurring availability and booked slots be modeled?",
+      "context": "The recurrence/exception model is the hardest near-irreversible choice in a scheduler; getting it wrong forces a migration.",
+      "consequence": "Determines query complexity for 'who is free when', timezone handling, and conflict detection.",
+      "category": "data",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "rrule_exceptions",
+          "label": "Recurrence rules (RRULE) + per-occurrence exceptions"
+        },
+        {
+          "id": "materialized_slots",
+          "label": "Pre-materialized concrete slots per period"
+        },
+        {
+          "id": "hybrid",
+          "label": "Hybrid — rules for templates, materialized for booked"
+        }
+      ],
+      "recommendation": "Recommended: hybrid — store availability as recurrence templates, materialize concrete slots when booked.",
+      "blocksWork": true
+    },
+    {
+      "dedupKey": "data-store",
+      "kind": "single",
+      "title": "Where should the primary scheduling data live?",
+      "context": "The datastore is a near-irreversible choice; picking it early avoids a painful migration under load.",
+      "consequence": "Determines the ORM, timezone/temporal query patterns, backup story, and read/write scaling.",
+      "category": "data",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "sqlite_d1",
+          "label": "SQLite / Cloudflare D1 (edge-native, read replicas)"
+        },
+        {
+          "id": "postgres",
+          "label": "Postgres (rich relational + temporal queries)"
+        },
+        {
+          "id": "managed_nosql",
+          "label": "Managed NoSQL (document/key-value)"
+        }
+      ],
+      "recommendation": "Recommended: Postgres if coverage/overlap queries get complex; D1/SQLite for an edge-first, simpler model.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "auth-identity",
+      "kind": "single",
+      "title": "How do team members authenticate, and is this single-org or multi-tenant?",
+      "context": "Auth + tenancy are deeply coupled to sessions and data isolation; changing later is weeks of work.",
+      "consequence": "Sets the sign-in UX, the row-level isolation model, and whether we need org invites from day one.",
+      "category": "identity",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "managed_multitenant",
+          "label": "Managed auth provider, multi-tenant (orgs + invites)"
+        },
+        {
+          "id": "managed_single",
+          "label": "Managed auth, single org for now"
+        },
+        {
+          "id": "sso",
+          "label": "SSO / SAML for company-wide rollout"
+        },
+        {
+          "id": "email_password",
+          "label": "Email + password we manage ourselves"
+        }
+      ],
+      "recommendation": "Recommended: a managed provider with org/tenant support so we never roll our own credential storage.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "deploy-target",
+      "kind": "single",
+      "title": "Where will this be deployed and run?",
+      "context": "The runtime target constrains the framework, cold-start budget, cron/alarm options, and ops model.",
+      "consequence": "Decides the build output, which runtime APIs we can use, and the deploy pipeline.",
+      "category": "architecture",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        {
+          "id": "edge_workers",
+          "label": "Edge platform (Cloudflare Workers / Durable Objects)"
+        },
+        {
+          "id": "node_server",
+          "label": "Long-running Node server / container"
+        },
+        {
+          "id": "static_plus_fns",
+          "label": "Static site + serverless functions"
+        }
+      ],
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "realtime-strategy",
+      "kind": "single",
+      "title": "Do multiple people edit the same schedule at once, and how should live updates propagate?",
+      "context": "A shared schedule is collaborative; the realtime choice affects conflict handling and infra.",
+      "consequence": "Decides between polling, WebSockets/Durable Objects, or SSE, and whether we need optimistic locking.",
+      "category": "collaboration",
+      "klass": "decision",
+      "horizon": "next",
+      "options": [
+        {
+          "id": "websockets",
+          "label": "Live WebSockets (Durable Object per schedule)"
+        },
+        {
+          "id": "sse_poll",
+          "label": "SSE / visibility-aware polling"
+        },
+        {
+          "id": "optimistic_reconcile",
+          "label": "Optimistic edits + background reconcile"
+        }
+      ],
+      "recommendation": "Recommended: a Durable Object per schedule with WebSocket fan-out if concurrent editing is real; polling if edits are rare.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "api-shape",
+      "kind": "single",
+      "title": "What shape should the API take for the client and any integrations?",
+      "context": "The API contract is a one-way door once external callers (mobile, integrations) depend on it.",
+      "consequence": "Sets versioning, the typed-client story, and how calendar integrations consume it.",
+      "category": "integrations",
+      "klass": "decision",
+      "horizon": "next",
+      "options": [
+        {
+          "id": "rest_openapi",
+          "label": "REST + OpenAPI (broad client + integration reach)"
+        },
+        {
+          "id": "rpc_typed",
+          "label": "Typed RPC (tight single-client coupling)"
+        },
+        {
+          "id": "graphql",
+          "label": "GraphQL (flexible client queries)"
+        }
+      ],
+      "recommendation": "Recommended: REST + OpenAPI so calendar integrations and a future mobile client can consume it.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "calendar-integrations",
+      "kind": "multiple",
+      "title": "Which external calendars must we sync with, and in which direction?",
+      "context": "Two-way sync with Google/Microsoft is a major subsystem; knowing the scope prevents half-built sync.",
+      "consequence": "Determines OAuth scopes, webhook handling, and whether conflicts resolve locally or at the provider.",
+      "category": "distribution",
+      "klass": "opportunity",
+      "horizon": "later",
+      "options": [
+        {
+          "id": "google",
+          "label": "Google Calendar"
+        },
+        {
+          "id": "microsoft",
+          "label": "Microsoft 365 / Outlook"
+        },
+        {
+          "id": "ics_feed",
+          "label": "Read-only iCal (.ics) subscribe feed"
+        },
+        {
+          "id": "none",
+          "label": "No external calendar sync in scope"
+        }
+      ],
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "payments-model",
+      "kind": "single",
+      "title": "Is this paid, and if so what is the billing model?",
+      "context": "Billing shape (seat vs flat vs usage) picks the payment rail and changing it later is a one-way door.",
+      "consequence": "Decides Stripe Billing vs a simpler rail, the entitlement model, and whether seats gate features.",
+      "category": "economics",
+      "klass": "decision",
+      "horizon": "later",
+      "options": [
+        {
+          "id": "per_seat",
+          "label": "Per-seat subscription (recurring)"
+        },
+        {
+          "id": "flat_tier",
+          "label": "Flat per-team tier"
+        },
+        {
+          "id": "free_now",
+          "label": "Free for now — no billing in v1"
+        }
+      ],
+      "recommendation": "Recommended: defer billing out of v1 unless charging is the point; per-seat + Stripe Billing when it lands.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "performance-targets",
+      "kind": "short_text",
+      "title": "What are the performance expectations (calendar render, availability query latency, team size)?",
+      "context": "Explicit targets prevent both under-building and premature optimization of the hot calendar view.",
+      "consequence": "Guides caching, the slot-query index strategy, and whether rendering needs virtualization.",
+      "category": "performance",
+      "klass": "opportunity",
+      "horizon": "later",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "accessibility-bar",
+      "kind": "single",
+      "title": "What accessibility bar must the calendar and booking flows meet?",
+      "context": "A date/time grid is notoriously hard for keyboard + screen-reader users; the bar must be set before building it.",
+      "consequence": "Decides keyboard-navigation design for the grid, focus management, and the axe/WCAG gate before ship.",
+      "category": "accessibility",
+      "klass": "decision",
+      "horizon": "next",
+      "options": [
+        {
+          "id": "wcag_22_aa",
+          "label": "WCAG 2.2 AA — keyboard grid + screen-reader + axe-clean"
+        },
+        {
+          "id": "basic",
+          "label": "Basic — labels + contrast, revisit later"
+        }
+      ],
+      "recommendation": "Recommended: WCAG 2.2 AA from the start — retrofitting a keyboard-navigable calendar grid is expensive.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "ai-behavior-boundaries",
+      "kind": "long_text",
+      "title": "If AI suggests schedules or fills gaps, what must it never do without a human confirming?",
+      "context": "An AI that auto-assigns shifts touches people's real time; guardrails keep it trustworthy and on-brand.",
+      "consequence": "Defines which AI actions are auto vs confirmed, what gets logged, and the fallback when the model is unsure.",
+      "category": "ai_behavior",
+      "klass": "decision",
+      "horizon": "next",
+      "blocksWork": false
+    }
+  ]
+}

@@ -285,6 +285,18 @@ app.post(`/api/${API_VERSION}/rooms/:id/checkout`, async (c) => {
   return err(c, 'not_implemented', 501);
 });
 
+// ── AI enrichment: manual re-scan trigger (authorized owner §6) ──────────────
+app.post(`/api/${API_VERSION}/rooms/:id/enrich`, async (c) => {
+  const id = c.req.param('id');
+  const { principal } = await getPrincipal(c);
+  const row = await roomRow(c.env, id);
+  if (!row) return err(c, 'room_not_found', 404);
+  if (row.owner_principal !== principal) return err(c, 'forbidden', 403);
+  // Honest-off: the feature flag lives on the Worker, not in the DO's request path.
+  if (c.env.ENRICHMENT_ENABLED === '0') return c.json({ ran: false, reason: 'disabled' });
+  return c.json(await roomStub(c.env, row.room_id).enrich());
+});
+
 // ── live transport: forward WS upgrade to the room DO (§13) ──────────────────
 app.get(`/api/${API_VERSION}/rooms/:id/events`, async (c) => {
   const id = c.req.param('id');

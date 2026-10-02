@@ -16,8 +16,10 @@ import {
   type PostAnswerRequest,
   type PostQuestionsResponse,
   type PostReceiptRequest,
+  type ProjectUnderstanding,
   type Question,
   type QuestionInput,
+  type QuestionQuality,
   type Room,
   type RoomEvent,
   type RoomSnapshot,
@@ -25,6 +27,10 @@ import {
   type Visibility,
 } from '@ask/contracts';
 import type { Env } from './env';
+import {
+  runEnrichment,
+  type EnrichmentInputQuestion,
+} from './features/enrichment/service';
 import {
   newAnswerId,
   newEventId,
@@ -36,6 +42,29 @@ import {
 } from './ids';
 
 const now = (): string => new Date().toISOString();
+
+/** A plain-text rendering of an answer (free text or a normalized value) for the AI input. */
+function answerText(a: AnswerRevision): string | undefined {
+  if (a.text && a.text.trim()) return a.text.trim();
+  const v = a.value;
+  if (!v) return undefined;
+  switch (v.kind) {
+    case 'choice':
+      return v.selected.length ? `chose: ${v.selected.join(', ')}` : undefined;
+    case 'text':
+      return v.text?.trim() || undefined;
+    case 'number':
+      return String(v.value);
+    case 'link':
+      return v.url;
+    case 'delegate':
+      return 'delegated the decision to the agent';
+    case 'skip':
+      return undefined; // a skip carries no project signal
+    default:
+      return undefined;
+  }
+}
 
 interface WsMeta {
   role: Role;
@@ -75,6 +104,13 @@ export class RoomDurableObject extends DurableObject<Env> {
         entity_revision INTEGER, at TEXT, payload TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_answers_q ON answers (question_id);
+      -- AI enrichment (§6): one understanding row (id='current') + per-question quality.
+      CREATE TABLE IF NOT EXISTS enrichment (
+        id TEXT PRIMARY KEY, data TEXT, pass_count INTEGER DEFAULT 0, last_run_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS question_quality (
+        question_id TEXT PRIMARY KEY, data TEXT, updated_at TEXT
+      );
     `);
   }
 
@@ -128,6 +164,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       participants: this.livingParticipants(),
       cursor: String(room.revision),
       viewerRole,
+      understanding: this.currentUnderstanding(),
+      questionQuality: this.currentQuestionQuality(),
     };
   }
 
@@ -189,6 +227,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       created += 1;
       out.push(question);
     }
+    // A new question changes the open set → re-assess quality (throttled, §6).
+    if (created > 0) this.scheduleEnrichment();
     return { questions: out, created, deduped };
   }
 
@@ -237,6 +277,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       questionId,
     );
     this.append('answer.created', revision, { answer });
+    // A fresh answer sharpens the project read + retires the question → re-run (§6).
+    this.scheduleEnrichment();
     return answer;
   }
 
@@ -339,6 +381,175 @@ export class RoomDurableObject extends DurableObject<Env> {
       }
     }
     return this.toRoom(this.metaRow()!);
+  }
+
+  // ── AI enrichment (§6) ─────────────────────────────────────────────────────
+
+  /** Enrichment config/limits. Throttle ≤ 1 pass / 30s; budget ~50 passes / room. */
+  private static readonly ENRICH_THROTTLE_MS = 30_000;
+  private static readonly ENRICH_BUDGET = 50;
+
+  private enrichmentOn(): boolean {
+    // Default-on; only the explicit string "0" disables (honest-off, §6).
+    return this.env.ENRICHMENT_ENABLED !== '0';
+  }
+
+  /**
+   * Manual enrichment trigger (authorized owner, via POST /enrich). Runs INLINE so
+   * the response carries the fresh result; honest `{ ran:false, reason }` when off,
+   * unavailable, empty, or over budget. Never throws.
+   */
+  async enrich(): Promise<{
+    ran: boolean;
+    reason?: string;
+    understanding?: ProjectUnderstanding;
+    questionQuality?: QuestionQuality[];
+  }> {
+    if (!this.enrichmentOn()) return { ran: false, reason: 'disabled' };
+    if (!this.env.AI) return { ran: false, reason: 'unavailable' };
+    const result = await this.runEnrichmentPass();
+    if (!result) {
+      // Distinguish "nothing to analyze" from budget exhaustion for an honest UI.
+      const reason = this.enrichInput().length === 0 ? 'empty' : 'budget';
+      return { ran: false, reason };
+    }
+    return { ran: true, understanding: result.understanding, questionQuality: result.questionQuality };
+  }
+
+  /**
+   * Coalesce bursts into at most one pass per throttle window via a DO alarm.
+   * Several answers/questions in quick succession schedule a single future run
+   * rather than N concurrent model calls (the §6 throttle). No-op when off/unbound.
+   */
+  private scheduleEnrichment(): void {
+    if (!this.enrichmentOn() || !this.env.AI) return;
+    void this.ctx.storage.getAlarm().then((existing) => {
+      if (existing != null) return; // a pass is already queued for this window
+      const row = this.rows('SELECT last_run_at FROM enrichment WHERE id = ?', 'current')[0];
+      const last = row?.last_run_at ? Date.parse(String(row.last_run_at)) : 0;
+      const elapsed = Date.now() - (Number.isFinite(last) ? last : 0);
+      const delay = Math.max(0, RoomDurableObject.ENRICH_THROTTLE_MS - elapsed);
+      void this.ctx.storage.setAlarm(Date.now() + delay);
+    });
+  }
+
+  /** DO alarm → run a single (throttled) enrichment pass in the background. */
+  override async alarm(): Promise<void> {
+    await this.runEnrichmentPass();
+  }
+
+  /**
+   * The actual pass: project Q&A → call the enrichment service → persist +
+   * broadcast. Returns the result (or null when it didn't/ couldn't run). Never
+   * throws (the service already fails soft; this guards persistence too).
+   */
+  private async runEnrichmentPass(): Promise<{
+    understanding: ProjectUnderstanding;
+    questionQuality: QuestionQuality[];
+  } | null> {
+    if (!this.enrichmentOn() || !this.env.AI) return null;
+    const passCount = Number(
+      this.rows('SELECT pass_count FROM enrichment WHERE id = ?', 'current')[0]?.pass_count ?? 0,
+    );
+    if (passCount >= RoomDurableObject.ENRICH_BUDGET) return null; // budget exhausted (§6)
+
+    const questions = this.enrichInput();
+    if (questions.length === 0) return null;
+
+    let result;
+    try {
+      result = await runEnrichment(this.env.AI, { questions });
+    } catch {
+      result = null; // belt + suspenders — the service shouldn't throw, but never let it bubble
+    }
+    if (!result) {
+      // Still stamp the attempt so the throttle window advances (avoids tight retry loops).
+      this.sql.exec(
+        `INSERT INTO enrichment (id, data, pass_count, last_run_at)
+         VALUES ('current', COALESCE((SELECT data FROM enrichment WHERE id='current'), NULL), ?, ?)
+         ON CONFLICT(id) DO UPDATE SET pass_count = ?, last_run_at = ?`,
+        passCount + 1,
+        now(),
+        passCount + 1,
+        now(),
+      );
+      return null;
+    }
+
+    const ts = now();
+    this.sql.exec(
+      `INSERT INTO enrichment (id, data, pass_count, last_run_at) VALUES ('current', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET data = ?, pass_count = ?, last_run_at = ?`,
+      JSON.stringify(result.understanding),
+      passCount + 1,
+      ts,
+      JSON.stringify(result.understanding),
+      passCount + 1,
+      ts,
+    );
+    // Replace the quality set wholesale — verdicts only exist for CURRENTLY-open questions.
+    this.sql.exec('DELETE FROM question_quality');
+    for (const q of result.questionQuality) {
+      this.sql.exec(
+        'INSERT INTO question_quality (question_id, data, updated_at) VALUES (?, ?, ?)',
+        q.questionId,
+        JSON.stringify(q),
+        q.updatedAt,
+      );
+    }
+    // Tell live clients to refresh (they GET /changes → re-snapshot the enrichment fields).
+    this.append('enrichment.updated', 0, {
+      understanding: result.understanding,
+      questionQuality: result.questionQuality,
+    });
+    return result;
+  }
+
+  /** Project stored questions + their latest answer into the enrichment input shape. */
+  private enrichInput(): EnrichmentInputQuestion[] {
+    const questions = this.rows('SELECT data FROM questions ORDER BY created_at ASC').map(
+      (r) => JSON.parse(r.data) as Question,
+    );
+    return questions.map((q) => {
+      const latest = this.rows(
+        'SELECT data FROM answers WHERE question_id = ? ORDER BY revision DESC LIMIT 1',
+        q.id,
+      )[0];
+      const answer = latest ? answerText(JSON.parse(latest.data) as AnswerRevision) : undefined;
+      return {
+        id: q.id,
+        title: q.title,
+        context: q.context,
+        consequence: q.consequence,
+        category: q.category,
+        open: q.state === 'open',
+        answer,
+      };
+    });
+  }
+
+  private currentUnderstanding(): ProjectUnderstanding | undefined {
+    const row = this.rows('SELECT data FROM enrichment WHERE id = ?', 'current')[0];
+    if (!row?.data) return undefined;
+    try {
+      return JSON.parse(row.data) as ProjectUnderstanding;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private currentQuestionQuality(): QuestionQuality[] | undefined {
+    const rows = this.rows('SELECT data FROM question_quality');
+    if (rows.length === 0) return undefined;
+    const out: QuestionQuality[] = [];
+    for (const r of rows) {
+      try {
+        out.push(JSON.parse(r.data) as QuestionQuality);
+      } catch {
+        /* skip a corrupt row */
+      }
+    }
+    return out.length ? out : undefined;
   }
 
   // ── WebSocket (hibernation) ──────────────────────────────────────────────

@@ -379,6 +379,7 @@ export const RoomEvent = z.object({
     'agent.status',
     'participant.joined',
     'participant.left',
+    'enrichment.updated',
   ]),
   schemaVersion: z.number().int().positive().default(PROTOCOL_VERSION),
   entityRevision: z.number().int().nonnegative(),
@@ -421,6 +422,37 @@ export const CreateRoomResponse = z.object({
 });
 export type CreateRoomResponse = z.infer<typeof CreateRoomResponse>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AI enrichment (§6) — a server-side "project understanding" + per-question
+// quality pass over ONLY the room's Q&A text (never repo files). Entirely
+// additive + optional so a room with enrichment off (or unavailable) is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A concise, clearly-AI-generated read of what the project is about (§6). */
+export const ProjectUnderstanding = z.object({
+  /** 2-3 sentence plain-language summary synthesized from the Q&A so far. */
+  summary: z.string().max(1200),
+  /** The model that produced it (surfaced so the UI can label the source). */
+  model: z.string().max(80),
+  /** How many Q&A pairs informed this read — lets the UI say "from N answers". */
+  basedOnAnswers: z.number().int().nonnegative(),
+  updatedAt: Iso,
+});
+export type ProjectUnderstanding = z.infer<typeof ProjectUnderstanding>;
+
+/** A quality verdict for a single OPEN question — is it pulling its weight? (§6) */
+export const QuestionQuality = z.object({
+  questionId: QuestionId,
+  /** 0..1 — how useful/decision-relevant this question is right now. */
+  usefulness: z.number().min(0).max(1),
+  /** True when the AI judges it vague, redundant, or low-value as written. */
+  lame: z.boolean(),
+  /** One short, actionable suggestion to sharpen it (shown only when lame). */
+  improvement: z.string().max(400),
+  updatedAt: Iso,
+});
+export type QuestionQuality = z.infer<typeof QuestionQuality>;
+
 export const RoomSnapshot = z.object({
   room: Room,
   questions: z.array(Question),
@@ -432,6 +464,10 @@ export const RoomSnapshot = z.object({
   cursor: Cursor,
   /** Viewer's resolved role in this room. */
   viewerRole: Role,
+  /** AI read of the project (§6). Optional — absent when enrichment is off/unrun. */
+  understanding: ProjectUnderstanding.optional(),
+  /** AI quality verdicts for OPEN questions (§6). Optional + additive. */
+  questionQuality: z.array(QuestionQuality).optional(),
 });
 export type RoomSnapshot = z.infer<typeof RoomSnapshot>;
 
@@ -519,6 +555,16 @@ export const UpdateSettingsRequest = z.object({
 });
 export type UpdateSettingsRequest = z.infer<typeof UpdateSettingsRequest>;
 
+/** Result of a manual enrichment trigger (§6). `ran:false` = honest no-op (off/budget). */
+export const EnrichResponse = z.object({
+  ran: z.boolean(),
+  /** Why it didn't run, when `ran` is false: 'disabled' | 'unavailable' | 'budget' | 'throttled' | 'empty'. */
+  reason: z.string().max(40).optional(),
+  understanding: ProjectUnderstanding.optional(),
+  questionQuality: z.array(QuestionQuality).optional(),
+});
+export type EnrichResponse = z.infer<typeof EnrichResponse>;
+
 export const ContextRequest = z.object({
   questionId: QuestionId.optional(),
   kind: z.enum(['explain', 'clarify', 'deeper']),
@@ -581,6 +627,7 @@ export const ROUTES = {
   settings: (id: string) => `/api/${API_VERSION}/rooms/${id}/settings`,
   claim: (id: string) => `/api/${API_VERSION}/rooms/${id}/claim`,
   checkout: (id: string) => `/api/${API_VERSION}/rooms/${id}/checkout`,
+  enrich: (id: string) => `/api/${API_VERSION}/rooms/${id}/enrich`,
   events: (id: string) => `/api/${API_VERSION}/rooms/${id}/events`,
   stripeWebhook: '/api/billing/stripe/webhook',
   manifest: '/integrations/manifest.json',

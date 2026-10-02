@@ -21,7 +21,9 @@ import {
   type AgentInstallation,
   type ApplicationReceipt,
   type Participant,
+  type ProjectUnderstanding,
   type Question,
+  type QuestionQuality,
   type Room,
   type RoomEvent,
   type RoomSnapshot,
@@ -49,6 +51,10 @@ export interface RoomStore {
   participants: Participant[];
   viewerRole: Role;
   cursor: string;
+  /** AI read of the project (§6); undefined until the first enrichment pass lands. */
+  understanding?: ProjectUnderstanding;
+  /** AI quality verdicts for open questions (§6). */
+  questionQuality?: QuestionQuality[];
 }
 
 type LoadState =
@@ -87,6 +93,8 @@ function snapshotToStore(s: RoomSnapshot): RoomStore {
     participants: s.participants,
     viewerRole: s.viewerRole,
     cursor: s.cursor,
+    understanding: s.understanding,
+    questionQuality: s.questionQuality,
   };
 }
 
@@ -139,6 +147,13 @@ function applyEvent(store: RoomStore, ev: RoomEvent): RoomStore | null {
     case 'room.visibility_changed': {
       const room = p.room as Room | undefined;
       return room ? { ...store, room } : null;
+    }
+    case 'enrichment.updated': {
+      // The DO emits the full entities (§6) — merge directly, no refetch needed.
+      const understanding = p.understanding as ProjectUnderstanding | undefined;
+      const questionQuality = p.questionQuality as QuestionQuality[] | undefined;
+      if (!understanding) return null; // payload lacked it → fall back to a snapshot refetch
+      return { ...store, understanding, questionQuality: questionQuality ?? [] };
     }
     case 'room.created':
       return store;
