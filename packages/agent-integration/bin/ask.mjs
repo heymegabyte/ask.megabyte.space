@@ -686,11 +686,19 @@ async function cmdSync(args) {
       for (const q of uniqueAnswered.slice(0, 8)) log.info(`  • ${trunc(q.title, 100)}`);
     }
     if (args.json) {
+      // Total questions known locally + how many THIS install authored — lets a
+      // host hook detect a fresh/empty room and prompt the first-run briefing.
+      const mirrorQuestions = Object.values(loadMirror().questions ?? {});
+      const agentPostedCount = mirrorQuestions.filter(
+        (q) => q.createdByInstall && q.createdByInstall === creds.installId,
+      ).length;
       printJson({
         ok: true,
         seeded: seededNow,
         receiptsPosted,
         events: newEvents.length,
+        questionCount: mirrorQuestions.length,
+        agentPostedCount,
         answered: uniqueAnswered.map((q) => ({ id: q.id, title: q.title, dedupKey: q.dedupKey })),
         decisions: decisions.map((d) => ({ meaning: d.meaning, summary: d.summary })),
         cursors: nextCursors,

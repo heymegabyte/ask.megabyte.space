@@ -35,6 +35,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(HERE, '..');
 const HELPER = join(PKG_ROOT, 'bin', 'ask.mjs');
 const MOCK = join(PKG_ROOT, 'fixtures', 'mock-service.mjs');
+const FIRST_RUN_FIXTURE = join(PKG_ROOT, 'fixtures', 'first-run-questions.example.json');
 
 const ROOM_ID = 'rm_0123456789abcdefghij';
 
@@ -489,6 +490,109 @@ test('e2e: first sync SEEDS pre-existing answers from the snapshot + posts an ap
   const decisionsAfter = readFileSync(join(cwd, 'docs', 'ask', 'decisions.md'), 'utf8');
   const occurrences = decisionsAfter.split('Primary color? → Cyan').length - 1;
   assert.equal(occurrences, 1, 'the decision line appears exactly once (no duplicate on re-sync)');
+});
+
+test('e2e: first-run `ask` publishes the batch (shipped example fixture) with correct shape (§19 #1)', async (t) => {
+  const cwd = makeTempProject();
+  const record = join(cwd, 'requests.jsonl');
+  // `fresh` → snapshot AND delta both empty: a brand-new room with ZERO
+  // questions, the real first-run condition the briefing targets.
+  setMode(record, 'fresh');
+  const { origin, child } = await startMock(record);
+  t.after(() => {
+    child.kill('SIGTERM');
+    rmSync(cwd, { recursive: true, force: true });
+  });
+  const lh = join(cwd, 'bin', 'ask.mjs');
+
+  let r = ask(lh, cwd, origin, ['connect', `${origin}/rooms/${ROOM_ID}`]);
+  assert.equal(r.status, 0, `connect failed: ${r.stderr}`);
+  setMode(record, 'fresh');
+
+  // Fresh-room signal: first sync reports zero agent-posted questions (drives the
+  // adapter's first-run briefing on SessionStart).
+  r = ask(lh, cwd, origin, ['sync', '--json']);
+  assert.equal(r.status, 0, `sync failed: ${r.stderr}`);
+  const beforeSync = JSON.parse(r.stdout);
+  assert.equal(beforeSync.questionCount, 0, 'fresh room has zero questions');
+  assert.equal(beforeSync.agentPostedCount, 0, 'fresh room has zero agent-posted questions');
+
+  // Publish the SHIPPED example fixture as the first-run batch (10 questions).
+  const fixture = JSON.parse(readFileSync(FIRST_RUN_FIXTURE, 'utf8'));
+  const fixtureCount = fixture.questions.length;
+  assert.equal(fixtureCount, 10, 'example fixture carries 10 questions');
+  const batchPath = join(cwd, 'first-run.json');
+  writeFileSync(batchPath, JSON.stringify(fixture));
+
+  r = ask(lh, cwd, origin, ['ask', '--file', 'first-run.json', '--json']);
+  assert.equal(r.status, 0, `ask failed: ${r.stderr}`);
+  const askOut = JSON.parse(r.stdout);
+  assert.equal(askOut.created, fixtureCount, 'all 10 questions created');
+  assert.equal(askOut.deduped, 0, 'none deduped on a fresh room');
+
+  // Assert the batch request shape against the contract (QuestionInput).
+  const batch = readRequests(record).find((q) => q.url.includes('questions:batch'));
+  assert.ok(batch, 'a questions:batch POST was made');
+  assert.equal(batch.method, 'POST');
+  assert.equal(
+    batch.auth,
+    'Bearer ai_a1b2c3d4e5f6g7h8.tok_fixture_scoped_anonymous_value_do_not_reuse',
+    'batch carries Bearer <installId>.<token>',
+  );
+  assert.ok(batch.body.idempotencyKey, 'batch carries an idempotency key');
+  assert.equal(batch.body.questions.length, fixtureCount, 'all 10 questions sent (none dropped)');
+
+  const KINDS = new Set([
+    'single',
+    'multiple',
+    'short_text',
+    'long_text',
+    'number',
+    'range',
+    'link',
+    'image_comparison',
+  ]);
+  const seenKeys = new Set();
+  const dims = new Set();
+  for (const q of batch.body.questions) {
+    assert.ok(q.dedupKey && q.dedupKey.length <= 200, `each question has a dedupKey (${q.title})`);
+    assert.ok(!seenKeys.has(q.dedupKey), `dedupKeys are unique (${q.dedupKey})`);
+    seenKeys.add(q.dedupKey);
+    assert.ok(KINDS.has(q.kind), `valid kind (${q.kind})`);
+    assert.ok(q.title && q.title.length >= 1 && q.title.length <= 300, 'title within bounds');
+    if (q.category) dims.add(q.category);
+    // Choice questions carry real options.
+    if (q.kind === 'single' || q.kind === 'multiple') {
+      assert.ok(
+        Array.isArray(q.options) && q.options.length >= 2,
+        `choice question has options (${q.dedupKey})`,
+      );
+    }
+  }
+  assert.ok(dims.size >= 8, `questions span many coverage dimensions (got ${dims.size})`);
+  assertNoForbidden(batch.body);
+
+  // Dedup: re-publishing the SAME fixture sends nothing (all dedupKeys known).
+  r = ask(lh, cwd, origin, ['ask', '--file', 'first-run.json', '--json']);
+  assert.equal(r.status, 0, `second ask failed: ${r.stderr}`);
+  const askOut2 = JSON.parse(r.stdout);
+  assert.equal(
+    askOut2.created,
+    0,
+    're-publishing the same batch creates nothing (client-side dedup)',
+  );
+  const batchPosts = readRequests(record).filter((q) => q.url.includes('questions:batch'));
+  assert.equal(batchPosts.length, 1, 'no second batch POST — all questions already known locally');
+
+  // After publishing, a sync reports the room is no longer fresh.
+  r = ask(lh, cwd, origin, ['sync', '--json']);
+  assert.equal(r.status, 0, `post-publish sync failed: ${r.stderr}`);
+  const afterSync = JSON.parse(r.stdout);
+  assert.equal(
+    afterSync.agentPostedCount,
+    fixtureCount,
+    'room now shows 10 agent-posted questions',
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

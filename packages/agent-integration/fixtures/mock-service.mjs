@@ -86,18 +86,20 @@ const server = createServer((req, res) => {
       }
       // `seed-only` → the delta is EMPTY; the pre-existing answered question is
       // reachable ONLY via the snapshot seed (the exact §9/§22 bug scenario).
-      if (mode === 'seed-only') {
+      // `fresh` → BOTH snapshot and delta are empty: a genuinely fresh room with
+      // zero questions (the first-run-briefing condition).
+      if (mode === 'seed-only' || mode === 'fresh') {
         return send(200, { events: [], cursor: 'seq:2', snapshotRequired: false });
       }
       return send(200, CHANGES);
     }
 
     if (url === `/api/v1/rooms/${ROOM_ID}`) {
-      // `empty-seed` mode → honest-empty snapshot (no pre-existing answered
-      // questions), so first-sync seeding folds nothing and the delta drives the
-      // answered question. Any other mode → snapshot carries a pre-answered
-      // question (exercises the §9/§22 seed-on-first-sync path).
-      const emptySeed = currentMode() === 'empty-seed';
+      // `empty-seed`/`fresh` → honest-empty snapshot (no pre-existing answered
+      // questions). In `empty-seed` the delta still drives an answered question;
+      // in `fresh` the delta is empty too (a brand-new room). Any other mode →
+      // snapshot carries a pre-answered question (the §9/§22 seed path).
+      const emptySeed = currentMode() === 'empty-seed' || currentMode() === 'fresh';
       return send(200, {
         room: { id: ROOM_ID, slug: 'sunny-harbor', revision: 2 },
         questions: emptySeed
@@ -130,11 +132,14 @@ const server = createServer((req, res) => {
     }
 
     if (url === `/api/v1/rooms/${ROOM_ID}/questions:batch` && req.method === 'POST') {
+      // Stamp createdByInstall with the enrolling install id so the local mirror
+      // reflects agent-authored questions (drives the first-run freshness signal).
       const qs = (body?.questions ?? []).map((q, i) => ({
         ...q,
         id: `q_published${i}0000000000`,
         revision: 1,
         state: 'open',
+        createdByInstall: ENROLL.install.id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }));

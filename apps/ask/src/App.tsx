@@ -1,28 +1,25 @@
 /**
  * App — resolves the room from the URL and renders the right surface.
  *
- * Path `/`            → create a fresh room, adopt its slug via replaceState,
- *                       then render it. On failure: one prominent "Free" button
- *                       (retries) + an inline error Banner.
- * Path `/<slug>`      → load the snapshot by slug. 200 → render (room.id drives
- *                       WS + writes). 404 → offer to claim the name. Private +
- *                       not owner → an honest "private page" notice.
+ * Path `/`       → create a fresh room, adopt its slug via replaceState, then
+ *                  render it. On failure: one prominent "Free" button (retries) +
+ *                  an inline error.
+ * Path `/<slug>` → load the snapshot by slug. 200 → render (room.id drives WS +
+ *                  writes). 404 → offer to claim the name. Private + not owner → an
+ *                  honest "private page" notice (handled in <Room/>).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Banner, Button, Loader, Text, useKumoToastManager } from '@cloudflare/kumo';
+import { Banner, Button, Loader, useKumoToastManager } from '@cloudflare/kumo';
 import { Sparkle } from '@phosphor-icons/react';
 import { createRoom, ApiError } from './api';
 import { Room } from './Room';
+import { Card, Eyebrow, Heading, Muted } from './components/ui';
 
 type ToastInput = { title: string; description?: string; variant?: 'success' | 'error' | 'info' | 'warning' };
 
 /** First path segment, decoded; '' for the root. */
 function currentSlug(): string {
   return decodeURIComponent(window.location.pathname.replace(/^\/+/, '').split('/')[0] ?? '');
-}
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-dvh items-center justify-center p-6">{children}</div>;
 }
 
 /** Root path: create a room, then swap the URL to its slug and render it. */
@@ -53,22 +50,30 @@ function CreateFlow() {
   if (slug) return <Room identifier={slug} />;
 
   return (
-    <Centered>
-      <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-        <Text as="h1" variant="heading" size="lg">
-          Ask
-        </Text>
-        <Text variant="secondary">
-          Answer the questions your coding agents should have been asking all along.
-        </Text>
+    <div className="ask-shell flex min-h-dvh items-center justify-center p-6">
+      <Card
+        className="ask-aurora relative flex w-full max-w-lg flex-col items-center gap-5 overflow-hidden p-8 text-center sm:p-10"
+        glow
+      >
+        <Eyebrow>Ask · for coding agents</Eyebrow>
+        <Heading level={1} className="ask-h1">
+          The questions your agents
+          <br className="hidden sm:block" /> should have asked
+        </Heading>
+        <Muted className="max-w-md text-center text-[0.98rem]">
+          A calm room where your coding agents raise the decisions they'd otherwise guess at — and you answer them,
+          live.
+        </Muted>
+
         {error ? (
           <Banner
-            className="w-full text-left"
             variant="error"
+            className="w-full text-left"
             title="Couldn't open a page"
             description="Give it another try — nothing was lost."
           />
         ) : null}
+
         <Button
           variant="primary"
           size="lg"
@@ -77,15 +82,14 @@ function CreateFlow() {
           data-testid="free-button"
           onClick={() => void create()}
         >
-          {busy ? 'Opening…' : 'Free'}
+          <span className="min-w-[7ch] text-center">{busy ? 'Opening…' : 'Start free'}</span>
         </Button>
-        {busy ? (
-          <Text variant="secondary" size="sm">
-            Claiming a fresh page for you…
-          </Text>
-        ) : null}
-      </div>
-    </Centered>
+
+        <Muted className="text-xs text-white/45">
+          {busy ? 'Claiming a fresh page for you…' : 'No sign-up. A new page opens instantly.'}
+        </Muted>
+      </Card>
+    </div>
   );
 }
 

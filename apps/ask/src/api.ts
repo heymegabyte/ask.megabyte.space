@@ -11,6 +11,7 @@ import {
   type AnswerValue,
   type ChangesResponse,
   ChangesResponse as ChangesResponseSchema,
+  type ContextRequest,
   type CreateRoomResponse,
   CreateRoomResponse as CreateRoomResponseSchema,
   type IntegrationManifest,
@@ -131,6 +132,31 @@ export async function updateSettings(roomId: string, slug: string): Promise<{ ro
  */
 export async function startCheckout(roomId: string): Promise<{ url: string }> {
   return request(ROUTES.checkout(roomId), { method: 'POST', headers: JSON_HEADERS, body: '{}' }, (d) => d as { url: string });
+}
+
+/**
+ * POST /rooms/<id>/context-requests — ask the agent to explain a question further
+ * (§5 "Explain more"). Honest about readiness: this endpoint isn't wired in the
+ * current worker increment, so it answers 501 (documented "not implemented") or
+ * 404 (route not yet registered). Either way we return `{ accepted: false }` so
+ * the caller KEEPS the control and shows a "requested" state instead of faking a
+ * response or surfacing a scary error. A 2xx (once the increment ships) →
+ * `{ accepted: true }`. Any other failure (429, 5xx) still throws.
+ */
+export async function postContextRequest(
+  roomId: string,
+  body: Pick<ContextRequest, 'questionId' | 'kind' | 'note'>,
+): Promise<{ accepted: boolean }> {
+  const res = await fetch(ROUTES.contextRequests(roomId), {
+    method: 'POST',
+    credentials: 'include',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+  // Not-yet-implemented on this increment → graceful "requested", never an error.
+  if (res.status === 501 || res.status === 404) return { accepted: false };
+  if (!res.ok) throw await readError(res);
+  return { accepted: true };
 }
 
 /** GET the integration manifest (§8) — used to fill the setup prompt with the live manifest URL/version. */

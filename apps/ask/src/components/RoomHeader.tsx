@@ -1,15 +1,32 @@
 /**
- * RoomHeader — a compact, calm top bar for a room.
+ * RoomHeader — a compact, calm, on-brand top bar for a room.
  *
- * Shows the slug (owner can inline-edit → PATCH settings), a copy-link control,
- * a public/private Badge, and an overflow menu. The slug stays on one line and
- * reads as the room's identity, not a form field, until the owner edits it.
+ * Left:  the Ask wordmark + the slug (owner can inline-edit → PATCH settings, with
+ *        optimistic apply and error revert) + a public/private badge.
+ * Right: copy-link (toast), and an overflow menu (New page · Copy setup prompt ·
+ *        Open link · a browser-local "recent pages" list).
+ *
+ * The slug stays on one line and reads as the room's identity, not a form field,
+ * until the owner edits it. Everything is dark-consistent and AA-contrast.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Badge, Button, DropdownMenu, Input, InlineCopyText } from '@cloudflare/kumo';
-import { Check, DotsThree, GlobeSimple, Lock, PencilSimple, X } from '@phosphor-icons/react';
+import { Badge, Button, DropdownMenu, Input, Tooltip } from '@cloudflare/kumo';
+import {
+  Check,
+  ClockCounterClockwise,
+  DotsThreeVertical,
+  GlobeSimple,
+  LinkSimple,
+  Lock,
+  PencilSimple,
+  Plus,
+  ClipboardText as ClipboardIcon,
+  X,
+} from '@phosphor-icons/react';
 import type { Room } from '@ask/contracts';
 import { updateSettings, ApiError } from '../api';
+import { getRecentPages } from '../recentPages';
+import { relativeTime } from './ui';
 
 interface Props {
   room: Room;
@@ -17,15 +34,29 @@ interface Props {
   roomUrl: string;
   onRoomChange: (room: Room) => void;
   onCopySetupPrompt: () => void;
+  onCopyLink: () => void;
+  onNewPage: () => void;
   onToast: (t: { title: string; description?: string; variant?: 'success' | 'error' | 'info' }) => void;
 }
 
-export function RoomHeader({ room, isOwner, roomUrl, onRoomChange, onCopySetupPrompt, onToast }: Props) {
+export function RoomHeader({
+  room,
+  isOwner,
+  roomUrl,
+  onRoomChange,
+  onCopySetupPrompt,
+  onCopyLink,
+  onNewPage,
+  onToast,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [draftSlug, setDraftSlug] = useState(room.slug);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Recent pages are read fresh when the menu mounts (localStorage, this device).
+  const recents = getRecentPages().filter((p) => p.slug !== room.slug);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -43,14 +74,19 @@ export function RoomHeader({ room, isOwner, roomUrl, onRoomChange, onCopySetupPr
       setEditing(false);
       return;
     }
+    // Optimistic: adopt the new slug immediately, revert on failure.
+    const previous = room;
     setSaving(true);
     setError(undefined);
+    onRoomChange({ ...room, slug: next });
     try {
       const res = await updateSettings(room.id, next);
       onRoomChange(res.room);
+      window.history.replaceState({}, '', `/${res.room.slug}`);
       setEditing(false);
       onToast({ title: 'Renamed', description: `This page is now /${res.room.slug}`, variant: 'success' });
     } catch (e: unknown) {
+      onRoomChange(previous); // revert the optimistic change
       const msg =
         e instanceof ApiError && e.code === 'slug_taken'
           ? 'That name is taken — try another.'
@@ -64,11 +100,21 @@ export function RoomHeader({ room, isOwner, roomUrl, onRoomChange, onCopySetupPr
   };
 
   return (
-    <header className="flex items-center gap-3 border-b border-kumo-hairline px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/10 bg-[#060610]/85 px-4 py-3 backdrop-blur-md sm:px-6">
+      {/* Wordmark */}
+      <a
+        href="/"
+        aria-label="Ask — home"
+        className="ask-mono hidden shrink-0 items-center gap-1 text-sm font-semibold text-white sm:flex"
+      >
+        <span className="text-[color:var(--ask-accent)]">◆</span> ask
+      </a>
+      <span className="hidden h-5 w-px shrink-0 bg-white/15 sm:block" aria-hidden="true" />
+
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {editing ? (
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-kumo-subtle">ask/</span>
+            <span className="ask-mono shrink-0 text-white/40">ask/</span>
             <Input
               ref={inputRef}
               size="sm"
@@ -110,38 +156,85 @@ export function RoomHeader({ room, isOwner, roomUrl, onRoomChange, onCopySetupPr
             aria-label={isOwner ? `Rename page (currently ${room.slug})` : `Page ${room.slug}`}
             disabled={!isOwner}
           >
-            <span className="truncate text-[clamp(1rem,3.5vw,1.25rem)] font-semibold text-kumo-default">
-              <span className="text-kumo-subtle">ask/</span>
+            <span className="ask-mono truncate text-[clamp(1rem,3.5vw,1.3rem)] font-semibold text-white">
+              <span className="text-white/40">ask/</span>
               {room.slug}
             </span>
             {isOwner ? (
               <PencilSimple
                 size={15}
-                className="shrink-0 text-kumo-subtle opacity-0 transition-opacity group-hover:opacity-100"
+                className="shrink-0 text-white/50 opacity-0 transition-opacity group-hover:opacity-100"
               />
             ) : null}
           </button>
         )}
 
-        <Badge
-          variant={room.visibility === 'private' ? 'neutral' : 'info'}
-          icon={room.visibility === 'private' ? Lock : GlobeSimple}
+        <Tooltip
+          content={
+            room.visibility === 'private'
+              ? 'Only you can view this page.'
+              : 'Anyone with the link can view this page.'
+          }
         >
-          {room.visibility === 'private' ? 'Private' : 'Public'}
-        </Badge>
+          <span>
+            <Badge
+              variant={room.visibility === 'private' ? 'purple' : 'info'}
+              icon={room.visibility === 'private' ? Lock : GlobeSimple}
+            >
+              {room.visibility === 'private' ? 'Private' : 'Public'}
+            </Badge>
+          </span>
+        </Tooltip>
       </div>
 
-      <InlineCopyText value={roomUrl} variant="body" size="sm" onCopy={() => onToast({ title: 'Link copied' })}>
-        Copy link
-      </InlineCopyText>
+      <Tooltip
+        content="Copy a link to this page"
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            icon={LinkSimple}
+            aria-label="Copy link"
+            data-testid="copy-link"
+            onClick={onCopyLink}
+          />
+        }
+      >
+        <span className="hidden sm:inline">Copy link</span>
+      </Tooltip>
 
       <DropdownMenu>
         <DropdownMenu.Trigger
-          render={<Button variant="ghost" shape="square" icon={DotsThree} aria-label="More actions" />}
+          render={<Button variant="ghost" shape="square" icon={DotsThreeVertical} aria-label="More actions" />}
         />
         <DropdownMenu.Content>
-          <DropdownMenu.Item onClick={onCopySetupPrompt}>Copy setup prompt</DropdownMenu.Item>
-          <DropdownMenu.LinkItem href={roomUrl}>Open room link</DropdownMenu.LinkItem>
+          <DropdownMenu.Item onClick={onNewPage} icon={Plus} data-testid="menu-new-page">
+            New page
+          </DropdownMenu.Item>
+          <DropdownMenu.Item onClick={onCopySetupPrompt} icon={ClipboardIcon}>
+            Copy setup prompt
+          </DropdownMenu.Item>
+          <DropdownMenu.LinkItem href={roomUrl} icon={GlobeSimple}>
+            Open room link
+          </DropdownMenu.LinkItem>
+          {recents.length ? (
+            <>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Label>
+                <span className="inline-flex items-center gap-1.5 text-white/55">
+                  <ClockCounterClockwise size={13} /> Recent pages
+                </span>
+              </DropdownMenu.Label>
+              {recents.map((p) => (
+                <DropdownMenu.LinkItem key={p.slug} href={`/${p.slug}`} data-testid="menu-recent-page">
+                  <span className="flex w-full items-center justify-between gap-3">
+                    <span className="ask-mono truncate">ask/{p.slug}</span>
+                    <span className="shrink-0 text-xs text-white/40">{relativeTime(new Date(p.at).toISOString())}</span>
+                  </span>
+                </DropdownMenu.LinkItem>
+              ))}
+            </>
+          ) : null}
         </DropdownMenu.Content>
       </DropdownMenu>
     </header>

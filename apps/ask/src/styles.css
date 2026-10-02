@@ -1,21 +1,44 @@
 /*
  * Ask — global styles.
  *
- * Order matters for Tailwind v4 + Kumo:
- *   1. Tailwind itself (the engine Kumo's classes compile against).
- *   2. Kumo's Tailwind-flavored stylesheet (tokens, component base layers).
- *      Resolved from @cloudflare/kumo package exports: "./styles/tailwind"
- *      → dist/styles/kumo.css (which @imports kumo-binding.css for tokens).
- *   3. @source so Tailwind v4 scans Kumo's shipped JS and KEEPS the utility
- *      classes Kumo emits at runtime (they'd be tree-shaken otherwise).
+ * Load order matters for Tailwind v4 + Kumo:
+ *   1. Tailwind engine (Kumo's classes compile against it).
+ *   2. Kumo's Tailwind stylesheet (tokens + component base layers), resolved from
+ *      the package export "./styles/tailwind" → dist/styles/kumo.css (which @imports
+ *      kumo-binding.css → theme-kumo.css, where the --color-kumo-* tokens live).
+ *   3. @source so Tailwind v4 scans Kumo's shipped JS and keeps the utility classes
+ *      Kumo emits at runtime (they'd be tree-shaken otherwise).
+ *
+ * DARK THEME: Kumo keys dark mode on [data-mode="dark"] (set on <html>), NOT on
+ * color-scheme alone. That attribute is what flips every Kumo surface (Empty,
+ * Banner, cards) to dark tokens — without it they render white on our black page.
  */
 @import 'tailwindcss';
 @import '@cloudflare/kumo/styles/tailwind';
 @source '../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}';
 
-/* Ask is dark-first. Kumo themes via a data attribute on <html>. */
+/* ── Brand surface + type (black #060610, cyan #00E5FF, Space Grotesk / JetBrains Mono) ──
+   We darken Kumo's base to the brand black and bind heading/mono families. The accent
+   hue is a CSS var so a slug-seeded tint can nudge it per-room without ever hurting
+   readability (set inline on .ask-shell). */
 :root {
   color-scheme: dark;
+  --ask-black: #060610;
+  --ask-cyan: #00e5ff;
+  --ask-violet: #7c3aed;
+  /* Default accent === brand cyan; Room sets --ask-accent-h to a slug-seeded hue. */
+  --ask-accent-h: 187;
+  --ask-accent: oklch(0.82 0.15 var(--ask-accent-h));
+  --ask-accent-soft: oklch(0.82 0.15 var(--ask-accent-h) / 0.12);
+  --ask-accent-line: oklch(0.82 0.15 var(--ask-accent-h) / 0.3);
+  --font-heading: 'Space Grotesk', 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* Override Kumo's dark base to the brand black so the whole canvas is #060610-ish. */
+html[data-mode='dark'] {
+  --color-kumo-base: #060610;
+  --color-kumo-canvas: #0a0a16;
 }
 
 html,
@@ -26,26 +49,129 @@ body,
 
 body {
   margin: 0;
-  background: var(--kumo-base, #0a0a0b);
-  color: var(--kumo-default, #e8e8ea);
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
+  background: var(--ask-black);
+  color: var(--text-color-kumo-default, #e8e8ea);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* A calm cyan accent wash behind the workspace — purely decorative. */
+/* Headings get Space Grotesk + balanced wrapping; body copy gets pretty wrapping. */
+h1,
+h2,
+h3,
+.ask-display {
+  font-family: var(--font-heading);
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+p,
+.ask-prose {
+  text-wrap: pretty;
+}
+
+/* Monospace surfaces: slug, room id, code blocks. */
+.ask-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'ss01';
+}
+
+/* Fluid display scale for the hero / create screens. */
+.ask-h1 {
+  font-size: clamp(1.75rem, 1.2rem + 2.6vw, 2.75rem);
+  line-height: 1.04;
+  font-weight: 700;
+}
+.ask-h2 {
+  font-size: clamp(1.15rem, 0.95rem + 1vw, 1.5rem);
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+/* A calm cyan/violet aurora behind the workspace — purely decorative, accent-seeded. */
 .ask-shell {
   min-height: 100%;
+  position: relative;
   background:
-    radial-gradient(60rem 40rem at 85% -10%, color-mix(in oklch, #00e5ff 9%, transparent), transparent 70%),
-    radial-gradient(50rem 40rem at 5% 0%, color-mix(in oklch, #50aae3 7%, transparent), transparent 65%);
+    radial-gradient(60rem 42rem at 85% -12%, var(--ask-accent-soft), transparent 70%),
+    radial-gradient(48rem 40rem at 2% -4%, oklch(0.6 0.12 280 / 0.08), transparent 62%);
 }
 
-/* Draft vs saved affordance — a draft (unsent) answer gets a dashed cyan rail. */
+/* Subtle animated grain/aurora drift on the hero only (reduced-motion disables it). */
+.ask-aurora::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(40rem 30rem at 50% 0%, var(--ask-accent-soft), transparent 70%);
+  opacity: 0.8;
+  animation: ask-drift 16s ease-in-out infinite alternate;
+}
+
+@keyframes ask-drift {
+  to {
+    transform: translate3d(0, 2.5rem, 0) scale(1.06);
+    opacity: 0.55;
+  }
+}
+
+/* Cinematic card entrance: @starting-style enter (transform/opacity only). */
+@supports (transition-behavior: allow-discrete) {
+  .ask-enter {
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity 0.42s cubic-bezier(0.2, 0, 0, 1),
+      transform 0.42s cubic-bezier(0.2, 0, 0, 1);
+  }
+  @starting-style {
+    .ask-enter {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+}
+
+/* Card hover micro-interaction (lift + accent hairline warms). transform/opacity only. */
+.ask-card {
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.ask-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -18px oklch(0 0 0 / 0.8);
+}
+
+/* Draft vs saved affordance — an unsent draft gets a dashed accent rail. */
 .ask-draft {
-  border-inline-start: 2px solid color-mix(in oklch, #00e5ff 55%, transparent);
-  border-inline-start-style: dashed;
+  border-inline-start: 2px dashed var(--ask-accent-line);
+}
+
+/* A live-pulse dot for the connection indicator. */
+.ask-pulse {
+  position: relative;
+}
+.ask-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  opacity: 0;
+  animation: ask-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes ask-ping {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.6;
+  }
+  80%,
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
 }
 
 /* Honor reduced-motion for every transition/animation we add. */
@@ -58,11 +184,69 @@ body {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+  .ask-card:hover {
+    transform: none;
+  }
 }
 
 /* Visible focus for keyboard users on any interactive element we render raw. */
-:where(a, button, [role='button'], [tabindex]):focus-visible {
-  outline: 2px solid #00e5ff;
+:where(a, button, [role='button'], [tabindex], input, textarea, summary):focus-visible {
+  outline: 2px solid var(--ask-accent);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: 8px;
+}
+
+/* Native range input styled on-brand (used by the 'range' question kind). */
+.ask-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--ask-accent) calc(var(--ask-range-fill, 0) * 1%),
+    oklch(1 0 0 / 0.1) calc(var(--ask-range-fill, 0) * 1%)
+  );
+  outline-offset: 4px;
+}
+.ask-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--ask-accent);
+  border: 2px solid var(--ask-black);
+  box-shadow: 0 0 0 1px var(--ask-accent-line);
+  cursor: pointer;
+}
+.ask-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--ask-accent);
+  border: 2px solid var(--ask-black);
+  cursor: pointer;
+}
+
+/* Scrollable setup-prompt / code blocks read as terminal panes. */
+.ask-code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+/* Thin, dark scrollbars inside our panes. */
+.ask-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 0.18) transparent;
+}
+.ask-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ask-scroll::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 0.16);
+  border-radius: 9999px;
 }

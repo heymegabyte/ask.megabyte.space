@@ -1,0 +1,153 @@
+{
+  "_comment": "SHAPE EXAMPLE ONLY — do not publish verbatim. The ask-project skill tells the agent to INSPECT the real repo and TAILOR these to the actual project, dropping any the code or the user's instructions already answer. Ten generic-software questions spanning the coverage dimensions, each showing the full QuestionInput shape the contract expects. Publish with: node bin/ask.mjs ask --file <your-tailored-file>.json",
+  "questions": [
+    {
+      "dedupKey": "primary-purpose",
+      "kind": "long_text",
+      "title": "In one sentence, what is the single most important thing this project must do well?",
+      "context": "The whole build orients around this; everything else is secondary. Pinning it now prevents scope drift later.",
+      "consequence": "Determines which features are core vs nice-to-have, and what we optimize first.",
+      "category": "purpose",
+      "klass": "decision",
+      "horizon": "now",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "primary-audience",
+      "kind": "single",
+      "title": "Who is the primary user we are building for first?",
+      "context": "Audience drives UX, defaults, and tone. Building for everyone usually means building for no one.",
+      "consequence": "Shapes onboarding, terminology, accessibility priorities, and which platform we target first.",
+      "category": "audience",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        { "id": "end_consumer", "label": "Everyday consumers (non-technical)" },
+        { "id": "business_team", "label": "Business / internal team users" },
+        { "id": "developers", "label": "Developers / technical users" },
+        { "id": "mixed", "label": "A mix — specify in a follow-up" }
+      ],
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "success-metric",
+      "kind": "short_text",
+      "title": "What one measurable outcome tells us this is working in 90 days?",
+      "context": "A single success metric keeps the roadmap honest and lets us say no to distractions.",
+      "consequence": "Decides what we instrument, what the dashboard shows, and how we prioritize.",
+      "category": "success",
+      "klass": "decision",
+      "horizon": "next",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "launch-scope",
+      "kind": "multiple",
+      "title": "Which capabilities are in scope for the FIRST usable release?",
+      "context": "Cutting v1 scope to the essential path ships value sooner and de-risks the rest.",
+      "consequence": "Everything unchecked moves to a later milestone; checked items become the build plan now.",
+      "category": "scope",
+      "klass": "blocker",
+      "horizon": "now",
+      "options": [
+        { "id": "auth", "label": "User accounts / sign-in" },
+        { "id": "core_crud", "label": "Core create/read/update/delete flows" },
+        { "id": "payments", "label": "Payments / billing" },
+        { "id": "notifications", "label": "Email / push notifications" },
+        { "id": "admin", "label": "Admin / back-office" }
+      ],
+      "recommendation": "Recommended: start with core CRUD + sign-in; defer payments and admin unless they are the point of the product.",
+      "blocksWork": true
+    },
+    {
+      "dedupKey": "data-store",
+      "kind": "single",
+      "title": "Where should the primary data live?",
+      "context": "The datastore is a near-irreversible choice; picking it early avoids a painful migration later.",
+      "consequence": "Determines the ORM, query patterns, hosting, backup story, and read/write scaling approach.",
+      "category": "data",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        { "id": "sqlite_d1", "label": "SQLite / Cloudflare D1 (edge-native)" },
+        { "id": "postgres", "label": "Postgres (relational, rich queries)" },
+        { "id": "managed_nosql", "label": "Managed NoSQL (document/key-value)" }
+      ],
+      "recommendation": "Recommended: D1/SQLite for an edge-first app; Postgres if you need complex relational queries from day one.",
+      "blocksWork": true
+    },
+    {
+      "dedupKey": "auth-provider",
+      "kind": "single",
+      "title": "How should users authenticate?",
+      "context": "Auth is deeply coupled to sessions and user data; changing providers later is weeks of work.",
+      "consequence": "Sets the sign-in UX, session model, and what identity data we store.",
+      "category": "identity",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        { "id": "managed", "label": "Managed auth provider (hosted, fastest)" },
+        { "id": "oauth_only", "label": "Social / OAuth only (Google, GitHub, …)" },
+        { "id": "email_password", "label": "Email + password we manage ourselves" },
+        { "id": "none_yet", "label": "No auth yet — single-tenant for now" }
+      ],
+      "recommendation": "Recommended: a managed provider to avoid rolling our own credential storage.",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "deploy-target",
+      "kind": "single",
+      "title": "Where will this be deployed and run?",
+      "context": "The runtime target constrains the framework, cold-start budget, and ops model.",
+      "consequence": "Decides the build output, runtime APIs we can use, and the deploy pipeline.",
+      "category": "architecture",
+      "klass": "decision",
+      "horizon": "now",
+      "options": [
+        { "id": "edge_workers", "label": "Edge platform (Cloudflare Workers / similar)" },
+        { "id": "node_server", "label": "Long-running Node server / container" },
+        { "id": "static_spa", "label": "Static site + serverless functions" }
+      ],
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "performance-targets",
+      "kind": "short_text",
+      "title": "What are the performance expectations (e.g. page-load, API latency)?",
+      "context": "Explicit targets prevent both under-building and premature optimization.",
+      "consequence": "Guides caching, bundle budgets, and whether we need background jobs or streaming.",
+      "category": "performance",
+      "klass": "opportunity",
+      "horizon": "later",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "ai-behavior-boundaries",
+      "kind": "long_text",
+      "title": "If the product uses AI, what must it never do, and where must a human stay in control?",
+      "context": "Setting guardrails up front keeps AI features safe, on-brand, and trustworthy.",
+      "consequence": "Defines which actions are auto vs confirmed, what gets logged, and the fallback when the model is unsure.",
+      "category": "ai_behavior",
+      "klass": "decision",
+      "horizon": "next",
+      "blocksWork": false
+    },
+    {
+      "dedupKey": "testing-bar",
+      "kind": "single",
+      "title": "What is the testing bar before something ships to users?",
+      "context": "Agreeing the bar now avoids relitigating 'is this done?' on every change.",
+      "consequence": "Sets whether we gate on unit tests, end-to-end flows, and accessibility checks.",
+      "category": "testing",
+      "klass": "decision",
+      "horizon": "next",
+      "options": [
+        { "id": "e2e_plus_unit", "label": "End-to-end on key flows + unit tests + a11y checks" },
+        { "id": "unit_only", "label": "Unit tests on core logic only" },
+        { "id": "manual", "label": "Manual smoke-test for now" }
+      ],
+      "recommendation": "Recommended: end-to-end on the critical path plus units on core logic — the highest confidence per hour.",
+      "blocksWork": false
+    }
+  ]
+}
