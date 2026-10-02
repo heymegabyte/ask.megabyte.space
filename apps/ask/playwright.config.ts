@@ -25,8 +25,10 @@ export default defineConfig({
   testDir: '../../e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 4 : undefined,
+  // Live-service E2E (real edge + WS timing) gets retries; cap workers so the
+  // two-context WS tests don't self-contend under unbounded local parallelism.
+  retries: process.env.CI ? 2 : 1,
+  workers: process.env.CI ? 4 : 6,
   reporter: [['list']],
   timeout: 60_000,
   expect: { timeout: 15_000 },
