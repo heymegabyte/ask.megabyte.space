@@ -34,3 +34,4 @@ e2e/screenshots/
 
 # claude
 .claude/settings.local.json
+.claude/worktrees/

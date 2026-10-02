@@ -519,7 +519,9 @@ async function cmdConnect(args) {
     serviceOrigin: origin,
     roomId,
     slug: slug ?? null,
-    roomUrl: `${origin}${ROUTES.room(roomId)}`,
+    // Human-facing URL (what a person opens), not the /api/v1/rooms/<id> path.
+    // Falls back to the canonical id path only when no slug is known.
+    roomUrl: slug ? `${origin}/${slug}` : `${origin}${ROUTES.room(roomId)}`,
     connectedAt: new Date().toISOString(),
   };
   writeJson(PROJECT_FILE, project);
@@ -1037,6 +1039,111 @@ function deriveDecisions(answers, questions) {
     if (d) out.push(d);
   }
   return out;
+}
+
+/**
+ * Pair each question with its LATEST answer revision from a RoomSnapshot.
+ * The snapshot returns questions and answer revisions as separate arrays
+ * (AnswerRevision is an append-only chain), so we pick the highest-revision
+ * answer per questionId. Returns a map questionId → latest AnswerRevision.
+ */
+function latestAnswersByQuestion(answers) {
+  const latest = new Map();
+  for (const a of answers ?? []) {
+    if (!a?.questionId || !a?.id) continue;
+    const cur = latest.get(a.questionId);
+    const rev = typeof a.revision === 'number' ? a.revision : 0;
+    const curRev = cur && typeof cur.revision === 'number' ? cur.revision : -1;
+    if (!cur || rev >= curRev) latest.set(a.questionId, a);
+  }
+  return latest;
+}
+
+/**
+ * First-sync seeding (§9/§22): a question answered BEFORE this agent enrolled
+ * never appears in the /changes delta (the agent's cursor starts at "now"), so
+ * the delta-only path silently misses it. On first sync we GET the full
+ * RoomSnapshot, fold every ANSWERED question + its decision into the docs, and
+ * return receipt-pairs so the room shows agent-reported evidence.
+ *
+ * Returns { answered, decisions, pairs, cursor }:
+ *  - answered: answered Question objects (with latestAnswerId/Text attached)
+ *  - decisions: derived decision summaries
+ *  - pairs: [{ questionId, answerId, summary }] for "applied" receipts
+ *  - cursor: the snapshot's subscribe-after cursor (delta continues from here)
+ */
+async function seedFromSnapshot(project, creds) {
+  const snap = await http(project.serviceOrigin, ROUTES.room(project.roomId), {
+    method: 'GET',
+    auth: creds,
+  });
+  const s = snap.body ?? {};
+  const questions = Array.isArray(s.questions) ? s.questions : [];
+  const answers = Array.isArray(s.answers) ? s.answers : [];
+  const latest = latestAnswersByQuestion(answers);
+
+  // Attach the latest answer to each answered question for the context doc.
+  const answered = [];
+  const decisions = [];
+  const pairs = [];
+  for (const q of questions) {
+    if (q?.state !== 'answered') continue;
+    const a = latest.get(q.id);
+    const enriched = {
+      ...q,
+      latestAnswerId: a?.id ?? q.latestAnswerId,
+      latestAnswerText:
+        a?.text ?? (a?.value?.kind === 'text' ? a.value.text : undefined) ?? q.latestAnswerText,
+    };
+    answered.push(enriched);
+    const d = decisionFromAnswer(a ?? { id: enriched.latestAnswerId }, enriched);
+    if (d) decisions.push(d);
+    if (enriched.latestAnswerId) {
+      pairs.push({
+        questionId: q.id,
+        answerId: enriched.latestAnswerId,
+        summary: d?.summary ?? trunc(q.title, 1000),
+      });
+    }
+  }
+
+  mergeMirror(questions.map((q) => ({ ...q, ...(latest.get(q.id) ? { state: 'answered' } : {}) })));
+  appendOutbox('snapshot.seed', {
+    questionCount: questions.length,
+    answered: answered.length,
+    receiptsToPost: pairs.length,
+  });
+
+  return { answered, decisions, pairs, cursor: s.cursor ?? '' };
+}
+
+/**
+ * Post an application receipt (programmatic — shared by first-sync seeding and
+ * `cmdReceipt`). Relative paths only; never diffs/prompts/env. Best-effort for
+ * seeding: an auth failure still throws (never silently retried), but a single
+ * receipt failing on a transient error must not abort the whole seed — callers
+ * decide. Returns the receipt or undefined.
+ */
+async function postReceipt(project, creds, { questionId, answerId, state, status, summary, paths }) {
+  const affectedPaths = (paths ?? [])
+    .map((p) => String(p).trim())
+    .filter((p) => p && !isAbsolute(p) && !p.startsWith('..'))
+    .slice(0, 100);
+  const body = {
+    questionId,
+    answerId,
+    state,
+    status: status || (state === 'applied' ? 'applied_to_project' : 'agent_downloaded'),
+    ...(summary ? { decisionSummary: trunc(String(summary), 1000) } : {}),
+    ...(affectedPaths.length ? { affectedPaths } : {}),
+  };
+  const res = await http(project.serviceOrigin, ROUTES.receipts(project.roomId), {
+    method: 'POST',
+    auth: creds,
+    body,
+  });
+  appendOutbox('receipt.recorded', { questionId, answerId, state, affectedPaths });
+  return res.body?.receipt;
 }
 
 /** A conservative local interpretation of an answer into a decision summary. */
