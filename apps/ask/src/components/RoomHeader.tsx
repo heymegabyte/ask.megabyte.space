@@ -114,7 +114,7 @@ export function RoomHeader({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {editing ? (
           <div className="flex min-w-0 items-center gap-2">
-            <span className="ask-mono shrink-0 text-white/40">ask/</span>
+            <span className="ask-mono shrink-0 text-white/55">ask/</span>
             <Input
               ref={inputRef}
               size="sm"
@@ -157,7 +157,7 @@ export function RoomHeader({
             disabled={!isOwner}
           >
             <span className="ask-mono truncate text-[clamp(1rem,3.5vw,1.3rem)] font-semibold text-white">
-              <span className="text-white/40">ask/</span>
+              <span className="text-white/55">ask/</span>
               {room.slug}
             </span>
             {isOwner ? (
@@ -229,7 +229,7 @@ export function RoomHeader({
                 <DropdownMenu.LinkItem key={p.slug} href={`/${p.slug}`} data-testid="menu-recent-page">
                   <span className="flex w-full items-center justify-between gap-3">
                     <span className="ask-mono truncate">ask/{p.slug}</span>
-                    <span className="shrink-0 text-xs text-white/40">{relativeTime(new Date(p.at).toISOString())}</span>
+                    <span className="shrink-0 text-xs text-white/60">{relativeTime(new Date(p.at).toISOString())}</span>
                   </span>
                 </DropdownMenu.LinkItem>
               ))}

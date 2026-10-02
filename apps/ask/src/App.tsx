@@ -85,7 +85,7 @@ function CreateFlow() {
           <span className="min-w-[7ch] text-center">{busy ? 'Opening…' : 'Start free'}</span>
         </Button>
 
-        <Muted className="text-xs text-white/45">
+        <Muted className="text-xs text-white/60">
           {busy ? 'Claiming a fresh page for you…' : 'No sign-up. A new page opens instantly.'}
         </Muted>
       </Card>

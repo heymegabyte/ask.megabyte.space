@@ -24,7 +24,9 @@ import {
   ArrowClockwise,
   ArrowLeft,
   ArrowRight,
+  CaretRight,
   ChatsCircle,
+  CheckCircle,
   ClipboardText as ClipboardIcon,
   GitBranch,
   Lightning,
@@ -50,6 +52,18 @@ type TabKey = 'questions' | 'decisions' | 'activity';
 
 const TOP_COUNT = 5;
 const noop = () => {};
+
+/** Short human label per question kind — shown as a badge on collapsed queue rows. */
+const KIND_LABEL: Record<Question['kind'], string> = {
+  single: 'Choice',
+  multiple: 'Multi',
+  short_text: 'Text',
+  long_text: 'Text',
+  number: 'Number',
+  range: 'Range',
+  link: 'Link',
+  image_comparison: 'Images',
+};
 
 interface Props {
   identifier: string;
@@ -78,12 +92,17 @@ export function Room({ identifier, onToast = noop }: Props) {
   const [checkingOut, setCheckingOut] = useState(false);
   const [focusMode, setFocusMode] = useState(false); // mobile one-question focus view
   const [focusIndex, setFocusIndex] = useState(0);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // which queued rows are open
   const setupPromptRef = useRef<string | null>(null);
   const [setupPrompt, setSetupPrompt] = useState<string | null>(null);
 
   const draftFor = useCallback((id: string): QuestionDraft => drafts[id] ?? emptyDraft, [drafts]);
   const setDraft = useCallback(
     (id: string, next: QuestionDraft) => setDrafts((d) => ({ ...d, [id]: next })),
+    [],
+  );
+  const toggleExpanded = useCallback(
+    (id: string) => setExpanded((e) => ({ ...e, [id]: !e[id] })),
     [],
   );
 
@@ -273,7 +292,7 @@ export function Room({ identifier, onToast = noop }: Props) {
     }
   };
 
-  const renderCard = (q: Question, compact = false) => (
+  const renderCard = (q: Question, compact = false, emphasis = false) => (
     <QuestionCard
       key={q.id}
       question={q}
@@ -281,6 +300,7 @@ export function Room({ identifier, onToast = noop }: Props) {
       pending={pending[q.id]}
       draft={draftFor(q.id)}
       compact={compact}
+      emphasis={emphasis}
       onDraftChange={(next) => setDraft(q.id, next)}
       onSubmit={(value, text) => void handleSubmit(q, value, text)}
       onExplainMore={() => explainMore(q)}
@@ -418,13 +438,32 @@ export function Room({ identifier, onToast = noop }: Props) {
             <div className="flex flex-col gap-4" aria-live="polite" aria-relevant="additions">
               <section className="flex flex-col gap-4">
                 <Eyebrow>Now — {top.length} to decide</Eyebrow>
-                {top.map((q) => renderCard(q))}
+                {top.map((q) => renderCard(q, false, true))}
               </section>
 
               {queued.length ? (
-                <section className="flex flex-col gap-3">
+                <section className="flex flex-col gap-2">
                   <Eyebrow>Next &amp; later · {queued.length}</Eyebrow>
-                  {queued.map((q) => renderCard(q))}
+                  {queued.map((q) => {
+                    // Auto-open a queued row if it has a saved answer or an in-progress draft,
+                    // so nothing you've touched hides behind a collapsed row.
+                    const hasAnswer = Boolean(answerFor(q.id));
+                    const draft = draftFor(q.id);
+                    const hasDraft = Boolean(
+                      draft.selected.length || draft.text.trim() || draft.number || draft.link.trim(),
+                    );
+                    const open = expanded[q.id] || hasAnswer || hasDraft;
+                    return open ? (
+                      renderCard(q)
+                    ) : (
+                      <QueueRow
+                        key={q.id}
+                        question={q}
+                        answered={hasAnswer}
+                        onExpand={() => toggleExpanded(q.id)}
+                      />
+                    );
+                  })}
                 </section>
               ) : null}
             </div>
@@ -565,7 +604,7 @@ function ConnectionPanel({
             </span>
           ) : null}
           {latestAgent.lastSeenAt ? (
-            <span className="ml-auto text-xs text-white/40">checked in {relativeTime(latestAgent.lastSeenAt)}</span>
+            <span className="ml-auto text-xs text-white/55">checked in {relativeTime(latestAgent.lastSeenAt)}</span>
           ) : null}
         </>
       ) : null}
@@ -574,6 +613,56 @@ function ConnectionPanel({
         Setup prompt
       </Button>
     </section>
+  );
+}
+
+/**
+ * QueueRow — a collapsed one-line row for a "Next & later" question. Shows a
+ * blocks/continues dot + the title + a kind badge; clicking (or Enter/Space)
+ * expands it to the full QuestionCard. Keeps the queue from becoming a vertical
+ * wall while the 5 "Now" cards stay full (§5 "keep the rest in an ordered queue").
+ */
+function QueueRow({
+  question,
+  answered,
+  onExpand,
+}: {
+  question: Question;
+  answered: boolean;
+  onExpand: () => void;
+}) {
+  const blocks = question.blocksWork;
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      aria-expanded={false}
+      title={blocks ? 'Blocks work until answered' : 'Work continues without this'}
+      aria-label={`${blocks ? 'Blocks work. ' : ''}Expand question: ${question.title}`}
+      className="ask-enter ask-card group flex w-full items-center gap-3 rounded-xl border border-white/10 bg-[#0b0b18]/60 px-4 py-3 text-left hover:border-white/20"
+    >
+      <span
+        className={[
+          'inline-block h-2 w-2 shrink-0 rounded-full',
+          blocks ? 'bg-amber-400' : 'bg-white/30',
+        ].join(' ')}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 truncate text-[0.92rem] font-medium text-white/90">
+        {question.title}
+      </span>
+      {answered ? (
+        <CheckCircle size={15} weight="fill" className="shrink-0 text-emerald-400" aria-label="Answered" />
+      ) : null}
+      <span className="ask-mono shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wider text-white/60 ring-1 ring-white/10">
+        {KIND_LABEL[question.kind]}
+      </span>
+      <CaretRight
+        size={14}
+        className="shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </button>
   );
 }
 
@@ -677,7 +766,7 @@ function DecisionsTab({ store }: { store: RoomStore }) {
                       <Mono key={p}>{p}</Mono>
                     ))}
                     {latestReceipt.affectedPaths.length > 6 ? (
-                      <span className="text-xs text-white/40">+{latestReceipt.affectedPaths.length - 6} more</span>
+                      <span className="text-xs text-white/55">+{latestReceipt.affectedPaths.length - 6} more</span>
                     ) : null}
                   </div>
                 ) : null}
@@ -752,11 +841,11 @@ function ActivityTab({ store }: { store: RoomStore }) {
       {items.map((it, i) => (
         <li key={i} className="ask-enter relative flex items-baseline gap-3 py-1">
           <span className={['absolute -left-[21px] top-2.5 h-2 w-2 rounded-full', dot[it.kind]].join(' ')} />
-          <time className="ask-mono shrink-0 text-xs text-white/40" title={it.ts}>
+          <time className="ask-mono shrink-0 text-xs text-white/55" title={it.ts}>
             {clockTime(it.ts)}
           </time>
           <span className="text-sm text-white/80">{it.text}</span>
-          <span className="ml-auto shrink-0 text-xs text-white/35">{relativeTime(it.ts)}</span>
+          <span className="ml-auto shrink-0 text-xs text-white/55">{relativeTime(it.ts)}</span>
         </li>
       ))}
     </ol>

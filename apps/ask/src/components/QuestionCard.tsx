@@ -58,6 +58,8 @@ interface Props {
   onExplainMore: () => Promise<boolean>;
   /** Mobile focus view renders a slimmer frame (the card is already the hero). */
   compact?: boolean;
+  /** A "Now" card — gets the cyan accent hairline to mark it as active/high-value. */
+  emphasis?: boolean;
   autoFocus?: boolean;
 }
 
@@ -228,7 +230,7 @@ function QuestionKindControl({
               {c?.unit ? ` ${c.unit}` : ''}
             </output>
           </div>
-          <div className="flex justify-between text-[0.7rem] text-white/40">
+          <div className="flex justify-between text-[0.7rem] text-white/55">
             <span className="ask-mono">
               {min}
               {c?.unit ? ` ${c.unit}` : ''}
@@ -306,6 +308,7 @@ export function QuestionCard({
   onSubmit,
   onExplainMore,
   compact = false,
+  emphasis = false,
   autoFocus,
 }: Props) {
   const controlId = useId();
@@ -329,13 +332,16 @@ export function QuestionCard({
     <Card
       as="article"
       interactive={!compact}
-      glow={question.blocksWork}
+      glow={question.blocksWork || emphasis}
       data-testid="question-card"
       data-question-id={question.id}
+      data-emphasis={emphasis ? 'true' : undefined}
       aria-label={question.title}
       className={[
         'ask-enter flex flex-col gap-4',
         compact ? 'p-5 sm:p-6' : 'p-5',
+        // Active "Now" cards get a soft cyan accent ring; blockers keep the warm glow.
+        emphasis && !question.blocksWork ? 'ring-1 ring-[color:var(--ask-accent-line)]' : '',
         isUnsentDraft ? 'ask-draft pl-[18px]' : '',
       ].join(' ')}
     >
@@ -388,7 +394,7 @@ export function QuestionCard({
           <p className="text-[0.9rem] leading-relaxed text-white/80">
             <span className="font-semibold text-[color:var(--ask-accent)]">Suggested: </span>
             {question.recommendation}
-            <span className="text-white/45"> — a hint, not selected for you.</span>
+            <span className="text-white/60"> — a hint, not selected for you.</span>
           </p>
         </div>
       ) : null}
@@ -468,14 +474,14 @@ export function QuestionCard({
 
       {/* Honest note when Explain-more isn't wired yet (501). */}
       {explainState === 'requested' ? (
-        <p className="ask-mono text-[0.72rem] text-white/45">
+        <p className="ask-mono text-[0.72rem] text-white/60">
           Requested — the agent will add more detail here when it supports context requests.
         </p>
       ) : null}
 
       {/* When saved, echo the committed answer so the card reflects server truth. */}
       {answer && !isUnsentDraft ? (
-        <p className="text-[0.8rem] text-white/50">
+        <p className="text-[0.8rem] text-white/60">
           Your answer: <Mono>{summarizeAnswer(answer)}</Mono>
         </p>
       ) : null}
