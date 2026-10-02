@@ -1,0 +1,43 @@
+{
+  "name": "@ask/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ask — Kumo room UI + Cloudflare Worker (Room Durable Object, REST, MCP, billing).",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@ask/contracts": "workspace:*",
+    "@cloudflare/kumo": "^2.14.0",
+    "@phosphor-icons/react": "^2.1.7",
+    "hono": "^4.6.15",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@cloudflare/vite-plugin": "^1.0.12",
+    "@cloudflare/vitest-pool-workers": "^0.6.4",
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@playwright/test": "^1.49.1",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8",
+    "wrangler": "^4.40.0"
+  }
+}

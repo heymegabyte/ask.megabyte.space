@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Allow native postinstall builds required for local dev/build (pnpm 11+ home).
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - sharp

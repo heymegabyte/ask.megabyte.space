@@ -1,0 +1,37 @@
+{
+  "name": "@ask/agent-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable, host-agnostic agent integration for Ask (ask.megabyte.space): a universal skill, a zero-dependency Node helper, and per-host adapters. No runtime deps.",
+  "license": "MIT",
+  "homepage": "https://ask.megabyte.space",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heymegabyte/ask.megabyte.space.git",
+    "directory": "packages/agent-integration"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "ask": "./bin/ask.mjs"
+  },
+  "exports": {
+    ".": "./bin/ask.mjs",
+    "./install": "./install.mjs",
+    "./adapters/claude-code": "./adapters/claude-code.mjs"
+  },
+  "files": [
+    "bin/",
+    "adapters/",
+    "install.mjs",
+    "SKILL.md",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test 'test/**/*.test.mjs'",
+    "typecheck": "node --check bin/ask.mjs && node --check adapters/claude-code.mjs && node --check install.mjs",
+    "ask": "node ./bin/ask.mjs"
+  }
+}

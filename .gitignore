@@ -1,0 +1,36 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+*.tsbuildinfo
+.wrangler/
+.dev.vars
+.vite/
+
+# test output
+coverage/
+playwright-report/
+test-results/
+e2e/screenshots/
+.playwright-mcp/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Ask local agent state (must never be committed — matches .ask/local/)
+.ask/local/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# claude
+.claude/settings.local.json

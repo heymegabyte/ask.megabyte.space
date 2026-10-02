@@ -1,0 +1,31 @@
+{
+  "name": "ask.megabyte.space",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Ask — answer the questions your coding agents should have been asking all along.",
+  "homepage": "https://ask.megabyte.space",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heymegabyte/ask.megabyte.space.git"
+  },
+  "packageManager": "pnpm@11.28.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ask/app dev",
+    "build": "pnpm -r --filter=./packages/* build && pnpm --filter @ask/app build",
+    "deploy": "pnpm --filter @ask/app deploy",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @ask/app test:e2e",
+    "lint": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}

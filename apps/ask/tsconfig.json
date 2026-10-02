@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["@cloudflare/workers-types", "vite/client"],
+    "noEmit": true,
+    "paths": {
+      "@ask/contracts": ["../../packages/contracts/src/index.ts"]
+    }
+  },
+  "include": ["src", "worker", "vite.config.ts", "worker-configuration.d.ts"]
+}

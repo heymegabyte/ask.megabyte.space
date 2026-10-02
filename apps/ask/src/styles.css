@@ -1,0 +1,68 @@
+/*
+ * Ask — global styles.
+ *
+ * Order matters for Tailwind v4 + Kumo:
+ *   1. Tailwind itself (the engine Kumo's classes compile against).
+ *   2. Kumo's Tailwind-flavored stylesheet (tokens, component base layers).
+ *      Resolved from @cloudflare/kumo package exports: "./styles/tailwind"
+ *      → dist/styles/kumo.css (which @imports kumo-binding.css for tokens).
+ *   3. @source so Tailwind v4 scans Kumo's shipped JS and KEEPS the utility
+ *      classes Kumo emits at runtime (they'd be tree-shaken otherwise).
+ */
+@import 'tailwindcss';
+@import '@cloudflare/kumo/styles/tailwind';
+@source '../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}';
+
+/* Ask is dark-first. Kumo themes via a data attribute on <html>. */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--kumo-base, #0a0a0b);
+  color: var(--kumo-default, #e8e8ea);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A calm cyan accent wash behind the workspace — purely decorative. */
+.ask-shell {
+  min-height: 100%;
+  background:
+    radial-gradient(60rem 40rem at 85% -10%, color-mix(in oklch, #00e5ff 9%, transparent), transparent 70%),
+    radial-gradient(50rem 40rem at 5% 0%, color-mix(in oklch, #50aae3 7%, transparent), transparent 65%);
+}
+
+/* Draft vs saved affordance — a draft (unsent) answer gets a dashed cyan rail. */
+.ask-draft {
+  border-inline-start: 2px solid color-mix(in oklch, #00e5ff 55%, transparent);
+  border-inline-start-style: dashed;
+}
+
+/* Honor reduced-motion for every transition/animation we add. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visible focus for keyboard users on any interactive element we render raw. */
+:where(a, button, [role='button'], [tabindex]):focus-visible {
+  outline: 2px solid #00e5ff;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
