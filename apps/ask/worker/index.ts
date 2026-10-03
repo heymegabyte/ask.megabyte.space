@@ -65,6 +65,8 @@ app.onError((e, c) => {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function err(c: Context<Ctx>, code: string, status: ContentfulStatusCode, details?: Record<string, unknown>) {
+  // Tell throttled callers when to retry (pairs with the per-IP rate limiter, §17).
+  if (status === 429) c.header('Retry-After', '60');
   return c.json({ error: code, code, details, requestId: c.req.header('X-Request-Id') }, status);
 }
 
