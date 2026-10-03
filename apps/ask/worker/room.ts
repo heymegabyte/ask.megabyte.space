@@ -409,8 +409,16 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (!this.env.AI) return { ran: false, reason: 'unavailable' };
     const result = await this.runEnrichmentPass();
     if (!result) {
-      // Distinguish "nothing to analyze" from budget exhaustion for an honest UI.
-      const reason = this.enrichInput().length === 0 ? 'empty' : 'budget';
+      // Honest reason: empty vs budget-exhausted vs a transient model error.
+      const passCount = Number(
+        this.rows('SELECT pass_count FROM enrichment WHERE id = ?', 'current')[0]?.pass_count ?? 0,
+      );
+      const reason =
+        this.enrichInput().length === 0
+          ? 'empty'
+          : passCount >= RoomDurableObject.ENRICH_BUDGET
+            ? 'budget'
+            : 'model_error';
       return { ran: false, reason };
     }
     return { ran: true, understanding: result.understanding, questionQuality: result.questionQuality };
@@ -463,14 +471,14 @@ export class RoomDurableObject extends DurableObject<Env> {
       result = null; // belt + suspenders — the service shouldn't throw, but never let it bubble
     }
     if (!result) {
-      // Still stamp the attempt so the throttle window advances (avoids tight retry loops).
+      // A FAILED pass must NOT consume the budget (a transient model error shouldn't
+      // permanently lock a room) — only advance last_run_at so retries stay throttled.
       this.sql.exec(
         `INSERT INTO enrichment (id, data, pass_count, last_run_at)
          VALUES ('current', COALESCE((SELECT data FROM enrichment WHERE id='current'), NULL), ?, ?)
-         ON CONFLICT(id) DO UPDATE SET pass_count = ?, last_run_at = ?`,
-        passCount + 1,
+         ON CONFLICT(id) DO UPDATE SET last_run_at = ?`,
+        passCount,
         now(),
-        passCount + 1,
         now(),
       );
       return null;

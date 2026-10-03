@@ -95,15 +95,25 @@ function extractJson(text: string): unknown {
   }
 }
 
-/** Normalize the varied `env.AI.run` return shapes into the text completion. */
+/**
+ * Normalize the varied `env.AI.run` return shapes into the text completion.
+ * Workers AI returns OpenAI-style `choices[0].message.content` for llama-3.x chat
+ * models (verified via REST) — older models used `{ response }`. Handle both so the
+ * binding shape can change without silently breaking enrichment.
+ */
 function textFromAiResponse(res: unknown): string | undefined {
   if (typeof res === 'string') return res;
-  if (res && typeof res === 'object') {
-    const r = res as { response?: unknown; result?: { response?: unknown } };
-    if (typeof r.response === 'string') return r.response;
-    if (r.result && typeof r.result.response === 'string') return r.result.response;
-  }
-  return undefined;
+  if (!res || typeof res !== 'object') return undefined;
+  const r = res as {
+    response?: unknown;
+    result?: { response?: unknown; choices?: unknown };
+    choices?: unknown;
+  };
+  if (typeof r.response === 'string') return r.response;
+  if (typeof r.result?.response === 'string') return r.result.response;
+  const choices = (Array.isArray(r.choices) ? r.choices : undefined) ?? (Array.isArray(r.result?.choices) ? r.result.choices : undefined);
+  const content = choices?.[0] && typeof choices[0] === 'object' ? (choices[0] as { message?: { content?: unknown } }).message?.content : undefined;
+  return typeof content === 'string' ? content : undefined;
 }
 
 /** Coerce a model-supplied usefulness (0..1, 0..100, or numeric string) into 0..1. */
