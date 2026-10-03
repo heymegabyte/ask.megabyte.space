@@ -39,6 +39,7 @@ import {
 import { join, dirname, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { execSync } from 'node:child_process';
 import process from 'node:process';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +86,35 @@ const MANAGED_END = '<!-- END ASK -->';
 const HTTP_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 4;
 const LOCK_STALE_MS = 2 * 60_000;
+
+/**
+ * Detect the project's git repo identity as normalized lowercase `owner/name`
+ * (from `git remote get-url origin`), so Ask can group questions by project and
+ * give each project a stable `/{owner}/{repo}` URL. Returns {} when not a git
+ * repo, when there's no `origin` remote, or when the remote isn't owner/name.
+ */
+function detectRepo() {
+  try {
+    const raw = execSync('git remote get-url origin', {
+      cwd: projectRoot(),
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+    })
+      .toString()
+      .trim();
+    if (!raw) return {};
+    // scp-style `git@host:owner/name.git`, or URL `scheme://host/owner/name.git`.
+    const m = raw.match(/^[^@]+@[^:]+:(.+)$/) || raw.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\/(.+)$/i);
+    const path = (m ? m[1] : raw).replace(/\.git$/i, '');
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length < 2) return { repoUrl: raw };
+    const repo = `${parts[parts.length - 2]}/${parts[parts.length - 1]}`.toLowerCase();
+    if (!/^[a-z0-9._-]+\/[a-z0-9._-]+$/.test(repo)) return { repoUrl: raw };
+    return { repo, repoUrl: raw };
+  } catch {
+    return {};
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tiny terminal styling (CI-safe; no deps)
@@ -500,12 +530,16 @@ async function cmdConnect(args) {
   ensureGitignore();
 
   // Enroll the agent → EnrollAgentResponse { install, token }.
+  const detectedRepo = detectRepo();
+  const repo = (args.repo || detectedRepo.repo || '').toLowerCase();
   const enrollBody = {
     agent: args.agent || detectAgentName(),
     version: args.version || ADAPTER_VERSION,
     features: parseList(args.features) ?? ['sync', 'questions', 'receipts'],
     ...(args.branch ? { branch: args.branch } : {}),
     ...(args.task ? { task: args.task } : {}),
+    ...(repo ? { repo } : {}),
+    ...(detectedRepo.repoUrl ? { repoUrl: detectedRepo.repoUrl } : {}),
   };
   const res = await http(origin, ROUTES.agents(roomId), { method: 'POST', body: enrollBody });
   const install = res.body?.install;

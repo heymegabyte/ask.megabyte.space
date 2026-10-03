@@ -5,11 +5,15 @@
  *  - mobile 375 one-question focus view works + no horizontal overflow.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { apiPublishQuestions, seedOwnedRoom, seedRoomWithQuestion, singleChoiceQuestion } from './_seed';
+import {
+  apiPublishQuestions,
+  seedOwnedRoom,
+  seedRoomWithQuestion,
+  singleChoiceQuestion,
+} from './_seed';
 import { shot } from './_shot';
 
 const BASE = process.env.PROD_URL ?? 'https://ask-megabyte-space.manhattan.workers.dev';
-
 
 test.describe('live propagation (WebSocket)', () => {
   // FIXED 2026-10-02 (was a product bug; now a GREEN regression test).
@@ -41,14 +45,21 @@ test.describe('live propagation (WebSocket)', () => {
       // Count current cards in both, then push a SECOND question via the API (as the agent).
       const beforeA = await pageA.getByTestId('question-card').count();
       await apiPublishQuestions(request, BASE, room.id, room.bearer, [
-        { ...singleChoiceQuestion(`ws-live-${Date.now().toString(36)}`), title: 'Which cache layer should we use?' },
+        {
+          ...singleChoiceQuestion(`ws-live-${Date.now().toString(36)}`),
+          title: 'Which cache layer should we use?',
+        },
       ]);
       await shot(pageA, 'live-ws', '1-viewer-a');
       await shot(pageB, 'live-ws', '2-viewer-b');
 
       // THE CONTRACT (now GREEN): both open pages show the new question WITHOUT any reload.
-      await expect(pageA.getByRole('heading', { name: 'Which cache layer should we use?' })).toBeVisible({ timeout: 20_000 });
-      await expect(pageB.getByRole('heading', { name: 'Which cache layer should we use?' })).toBeVisible({ timeout: 20_000 });
+      await expect(
+        pageA.getByRole('heading', { name: 'Which cache layer should we use?' }),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(
+        pageB.getByRole('heading', { name: 'Which cache layer should we use?' }),
+      ).toBeVisible({ timeout: 20_000 });
       await expect.poll(() => pageA.getByTestId('question-card').count()).toBeGreaterThan(beforeA);
     } finally {
       await ctxA.close();
@@ -69,10 +80,15 @@ test.describe('live propagation (WebSocket)', () => {
     const before = await page.getByTestId('question-card').count();
 
     await apiPublishQuestions(request, BASE, room.id, room.bearer, [
-      { ...singleChoiceQuestion(`ws-reload-2-${Date.now().toString(36)}`), title: 'Which cache layer should we use?' },
+      {
+        ...singleChoiceQuestion(`ws-reload-2-${Date.now().toString(36)}`),
+        title: 'Which cache layer should we use?',
+      },
     ]);
     await page.reload({ waitUntil: 'networkidle' });
-    await expect(page.getByRole('heading', { name: 'Which cache layer should we use?' })).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByRole('heading', { name: 'Which cache layer should we use?' }),
+    ).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => page.getByTestId('question-card').count()).toBeGreaterThan(before);
     await shot(page, 'live-ws', '3-after-reload');
   });
@@ -90,7 +106,9 @@ test.describe('make-private honesty', () => {
     await makePrivate.click();
 
     // Honest 501 → an inline "coming soon" banner; the page badge stays Public.
-    await expect(page.getByText(/coming soon|isn't live yet|stays public/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/coming soon|isn't live yet|stays public/i).first()).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.getByText('Public').first()).toBeVisible();
     await shot(page, 'make-private', '1-honest-public');
   });
@@ -103,7 +121,10 @@ test.describe('mobile focus view (375)', () => {
     // Seed TWO questions so the Focus toggle (shown only with >1) appears.
     const room = await seedOwnedRoom(page, BASE, `focus-${Date.now().toString(36)}`);
     await apiPublishQuestions(page.request, BASE, room.id, room.bearer, [
-      { ...singleChoiceQuestion(`focus-2-${Date.now().toString(36)}`), title: 'Which deploy region?' },
+      {
+        ...singleChoiceQuestion(`focus-2-${Date.now().toString(36)}`),
+        title: 'Which deploy region?',
+      },
     ]);
 
     await page.goto(`/${room.slug}`);

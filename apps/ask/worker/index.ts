@@ -10,6 +10,7 @@ import {
   CreateRoomRequest,
   EnrollAgentRequest,
   type IntegrationManifest,
+  type MeRoom,
   PostAnswerRequest,
   PostQuestionsRequest,
   PostReceiptRequest,
@@ -64,7 +65,12 @@ app.onError((e, c) => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function err(c: Context<Ctx>, code: string, status: ContentfulStatusCode, details?: Record<string, unknown>) {
+function err(
+  c: Context<Ctx>,
+  code: string,
+  status: ContentfulStatusCode,
+  details?: Record<string, unknown>,
+) {
   // Tell throttled callers when to retry (pairs with the per-IP rate limiter, §17).
   if (status === 429) c.header('Retry-After', '60');
   return c.json({ error: code, code, details, requestId: c.req.header('X-Request-Id') }, status);
@@ -147,14 +153,22 @@ async function roomRow(env: Env, param: string) {
   const sql = param.startsWith('rm_')
     ? 'SELECT * FROM rooms WHERE room_id = ?'
     : 'SELECT r.* FROM rooms r JOIN slugs s ON s.room_id = r.room_id WHERE s.slug = ?';
-  return env.DB.prepare(sql)
-    .bind(param)
-    .first<{ room_id: string; current_slug: string; owner_principal: string; visibility: string }>();
+  return env.DB.prepare(sql).bind(param).first<{
+    room_id: string;
+    current_slug: string;
+    owner_principal: string;
+    visibility: string;
+  }>();
 }
 
 // ── health ─────────────────────────────────────────────────────────────────
 app.get('/api/health', (c) =>
-  c.json({ status: 'ok', service: c.env.SERVICE_ORIGIN, version: ADAPTER_VERSION, api: API_VERSION }),
+  c.json({
+    status: 'ok',
+    service: c.env.SERVICE_ORIGIN,
+    version: ADAPTER_VERSION,
+    api: API_VERSION,
+  }),
 );
 
 // ── create or claim a room (idempotent, atomic slug claim §4, §11) ───────────
@@ -194,7 +208,11 @@ app.post(`/api/${API_VERSION}/rooms`, async (c) => {
       if (!room) return err(c, 'room_not_found', 404);
       if (setCookie) c.header('Set-Cookie', setCookie);
       return c.json(
-        { room, url: `${c.env.SERVICE_ORIGIN}/${room.slug}`, owned: existing.owner_principal === principal },
+        {
+          room,
+          url: `${c.env.SERVICE_ORIGIN}/${room.slug}`,
+          owned: existing.owner_principal === principal,
+        },
         200,
       );
     }
@@ -211,7 +229,9 @@ app.post(`/api/${API_VERSION}/rooms`, async (c) => {
       return c.json({ room, url: `${c.env.SERVICE_ORIGIN}/${room.slug}`, owned: true }, 201);
     } catch (e) {
       // Compensate the orphaned slug claim so the name is reusable (§11 between-steps recovery).
-      await c.env.DB.prepare('DELETE FROM slugs WHERE slug = ? AND room_id = ?').bind(slug, roomId).run();
+      await c.env.DB.prepare('DELETE FROM slugs WHERE slug = ? AND room_id = ?')
+        .bind(slug, roomId)
+        .run();
       throw e;
     }
   }
@@ -228,7 +248,13 @@ app.get(`/api/${API_VERSION}/rooms/:id`, async (c) => {
   if (setCookie) c.header('Set-Cookie', setCookie);
   // Private rooms return only a minimal access-state to the unauthorized (§12, §14).
   if (row.visibility === 'private' && role !== 'owner') {
-    return c.json({ room: { id: row.room_id, slug: row.current_slug, visibility: 'private' }, access: 'denied' }, 200);
+    return c.json(
+      {
+        room: { id: row.room_id, slug: row.current_slug, visibility: 'private' },
+        access: 'denied',
+      },
+      200,
+    );
   }
   return c.json(await roomStub(c.env, row.room_id).snapshot(role));
 });
@@ -240,25 +266,84 @@ app.get(`/api/${API_VERSION}/rooms/:id/changes`, async (c) => {
   return c.json(await roomStub(c.env, row.room_id).changes(c.req.query('cursor') ?? '0'));
 });
 
+// ── personal dashboard: the viewer's own rooms + each room's AI read (§28-ext) ─
+// Private to this browser's anonymous principal — never a global/public directory (§28).
+app.get(`/api/${API_VERSION}/me/rooms`, async (c) => {
+  const { principal, setCookie } = await getPrincipal(c);
+  if (setCookie) c.header('Set-Cookie', setCookie);
+  const rows = await c.env.DB.prepare(
+    'SELECT room_id FROM rooms WHERE owner_principal = ? ORDER BY updated_at DESC LIMIT 100',
+  )
+    .bind(principal)
+    .all<{ room_id: string }>();
+  const out: MeRoom[] = [];
+  for (const r of rows.results ?? []) {
+    const s = await roomStub(c.env, r.room_id).dashboardSummary();
+    if (!s) continue;
+    out.push({
+      room: s.room,
+      url: `${c.env.SERVICE_ORIGIN}/${s.room.slug}`,
+      questionCount: s.questionCount,
+      openCount: s.openCount,
+      answeredCount: s.answeredCount,
+      repos: s.repos,
+      understanding: s.understanding,
+      lastActivityAt: s.lastActivityAt,
+    });
+  }
+  return c.json({ rooms: out });
+});
+
+// ── resolve a git repo ("/{owner}/{repo}") to its canonical room (§28-ext) ────
+app.get(`/api/${API_VERSION}/repos/:owner/:repo`, async (c) => {
+  const repoSlug = `${c.req.param('owner')}/${c.req.param('repo')}`.toLowerCase();
+  const map = await c.env.DB.prepare('SELECT room_id FROM repo_rooms WHERE repo_slug = ?')
+    .bind(repoSlug)
+    .first<{ room_id: string }>();
+  if (!map) return err(c, 'repo_not_found', 404, { repo: repoSlug });
+  const row = await roomRow(c.env, map.room_id);
+  if (!row) return err(c, 'room_not_found', 404);
+  return c.json({
+    roomId: row.room_id,
+    slug: row.current_slug,
+    repo: repoSlug,
+    url: `${c.env.SERVICE_ORIGIN}/${row.current_slug}`,
+  });
+});
+
 // ── agent enrollment (rate-limited anonymous; no admin power §12) ─────────────
 app.post(`/api/${API_VERSION}/rooms/:id/agents`, async (c) => {
   if (await rateLimited(c, c.env.WRITE_LIMIT)) return err(c, 'rate_limited', 429);
   const id = c.req.param('id');
-  if (!(await roomRow(c.env, id))) return err(c, 'room_not_found', 404);
+  const row = await roomRow(c.env, id);
+  if (!row) return err(c, 'room_not_found', 404);
   const parsed = EnrollAgentRequest.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return err(c, 'invalid_request', 400, { issues: parsed.error.issues });
-  return c.json(await roomStub(c.env, id).enrollAgent(parsed.data), 201);
+  const result = await roomStub(c.env, row.room_id).enrollAgent(parsed.data);
+  // Register the project's /{owner}/{repo} URL — first-wins; never steals another room's repo (§28-ext).
+  if (parsed.data.repo) {
+    await c.env.DB.prepare(
+      'INSERT OR IGNORE INTO repo_rooms (repo_slug, room_id, created_at) VALUES (?, ?, ?)',
+    )
+      .bind(parsed.data.repo, row.room_id, now())
+      .run();
+  }
+  return c.json(result, 201);
 });
 
 // ── publish deduplicated questions ───────────────────────────────────────────
 app.post(`/api/${API_VERSION}/rooms/:id/questions:batch`, async (c) => {
   if (await rateLimited(c, c.env.WRITE_LIMIT)) return err(c, 'rate_limited', 429);
   const id = c.req.param('id');
-  if (!(await roomRow(c.env, id))) return err(c, 'room_not_found', 404);
+  const row = await roomRow(c.env, id);
+  if (!row) return err(c, 'room_not_found', 404);
   const parsed = PostQuestionsRequest.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return err(c, 'invalid_request', 400, { issues: parsed.error.issues });
-  const installId = await resolveInstall(c, c.env, id);
-  return c.json(await roomStub(c.env, id).postQuestions(parsed.data.questions, installId ?? undefined), 201);
+  const installId = await resolveInstall(c, c.env, row.room_id);
+  return c.json(
+    await roomStub(c.env, row.room_id).postQuestions(parsed.data.questions, installId ?? undefined),
+    201,
+  );
 });
 
 // ── append an answer revision (public, no account §7) ────────────────────────
@@ -304,14 +389,18 @@ app.patch(`/api/${API_VERSION}/rooms/:id/settings`, async (c) => {
   if (!isValidSlug(slug)) return err(c, 'invalid_slug', 400, { slug });
   const ts = now();
   try {
-    await c.env.DB.prepare('INSERT INTO slugs (slug, room_id, status, created_at) VALUES (?, ?, ?, ?)')
+    await c.env.DB.prepare(
+      'INSERT INTO slugs (slug, room_id, status, created_at) VALUES (?, ?, ?, ?)',
+    )
       .bind(slug, id, 'active', ts)
       .run();
   } catch {
     return err(c, 'slug_taken', 409, { slug });
   }
   // Old slug becomes an alias (redirect) honoring current privacy (§4).
-  await c.env.DB.prepare('UPDATE slugs SET status = ? WHERE slug = ?').bind('alias', row.current_slug).run();
+  await c.env.DB.prepare('UPDATE slugs SET status = ? WHERE slug = ?')
+    .bind('alias', row.current_slug)
+    .run();
   await c.env.DB.prepare('UPDATE rooms SET current_slug = ?, updated_at = ? WHERE room_id = ?')
     .bind(slug, ts, id)
     .run();
@@ -370,12 +459,44 @@ app.get('/integrations/manifest.json', (c) => {
     adapterVersion: ADAPTER_VERSION,
     serviceOrigin: c.env.SERVICE_ORIGIN,
     hosts: [
-      { agent: 'Claude Code', skillPath: '.claude/skills/ask-project/SKILL.md', automation: 'Project settings hooks (SessionStart, UserPromptSubmit, throttled PostToolUse, Stop).', verified: true },
-      { agent: 'Codex', skillPath: '.agents/skills/ask-project/SKILL.md', automation: 'Project .codex hooks where the installed version supports them; else explicit checkpoints.', verified: false },
-      { agent: 'Cursor', skillPath: '.agents/skills/ask-project/SKILL.md', automation: 'Project .cursor/hooks.json where supported; IDE vs cloud differ.', verified: false },
-      { agent: 'Gemini CLI', skillPath: '.agents/skills/ask-project/SKILL.md', automation: 'Documented session/tool hook events of the installed release.', verified: false },
-      { agent: 'OpenCode', skillPath: '.agents/skills/ask-project/SKILL.md', automation: 'Skill + host integration when verified; else explicit checkpoint calls.', verified: false },
-      { agent: 'Other (HTTP)', skillPath: 'referenced project instruction file', automation: 'HTTP helper + startup/task-boundary instructions.', verified: true },
+      {
+        agent: 'Claude Code',
+        skillPath: '.claude/skills/ask-project/SKILL.md',
+        automation:
+          'Project settings hooks (SessionStart, UserPromptSubmit, throttled PostToolUse, Stop).',
+        verified: true,
+      },
+      {
+        agent: 'Codex',
+        skillPath: '.agents/skills/ask-project/SKILL.md',
+        automation:
+          'Project .codex hooks where the installed version supports them; else explicit checkpoints.',
+        verified: false,
+      },
+      {
+        agent: 'Cursor',
+        skillPath: '.agents/skills/ask-project/SKILL.md',
+        automation: 'Project .cursor/hooks.json where supported; IDE vs cloud differ.',
+        verified: false,
+      },
+      {
+        agent: 'Gemini CLI',
+        skillPath: '.agents/skills/ask-project/SKILL.md',
+        automation: 'Documented session/tool hook events of the installed release.',
+        verified: false,
+      },
+      {
+        agent: 'OpenCode',
+        skillPath: '.agents/skills/ask-project/SKILL.md',
+        automation: 'Skill + host integration when verified; else explicit checkpoint calls.',
+        verified: false,
+      },
+      {
+        agent: 'Other (HTTP)',
+        skillPath: 'referenced project instruction file',
+        automation: 'HTTP helper + startup/task-boundary instructions.',
+        verified: true,
+      },
     ],
     files: [],
     generatedAt: now(),
@@ -392,7 +513,9 @@ app.all('/mcp', (c) =>
 
 // ── stripe webhook boundary (§15) — verified + idempotent in Increment 3 ─────
 app.post('/api/billing/stripe/webhook', (c) =>
-  err(c, 'billing_not_configured', 501, { note: 'Webhook verification + idempotent inbox ship in Increment 3.' }),
+  err(c, 'billing_not_configured', 501, {
+    note: 'Webhook verification + idempotent inbox ship in Increment 3.',
+  }),
 );
 
 app.notFound((c) => {

@@ -42,7 +42,13 @@ export async function createRoom(body: Record<string, unknown> = {}): Promise<Cr
   const j = (await res.json()) as { room: { id: string; slug: string }; owned: boolean };
   const cookie = firstCookie(res);
   expect(cookie, 'owner Set-Cookie issued').toBeTruthy();
-  return { id: j.room.id, slug: j.room.slug, ownerCookie: cookie!, owned: j.owned, status: res.status };
+  return {
+    id: j.room.id,
+    slug: j.room.slug,
+    ownerCookie: cookie!,
+    owned: j.owned,
+    status: res.status,
+  };
 }
 
 /** GET /rooms/<slugOrId> as a given cookie (none = a fresh guest principal). */
@@ -53,7 +59,11 @@ export async function getSnapshot(
   const res = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${idOrSlug}`, {
     headers: cookie ? { cookie } : {},
   });
-  return { status: res.status, body: (await res.json()) as Record<string, unknown>, setCookie: firstCookie(res) };
+  return {
+    status: res.status,
+    body: (await res.json()) as Record<string, unknown>,
+    setCookie: firstCookie(res),
+  };
 }
 
 /** POST /rooms/<id>/agents → an enrolled installation + a `Bearer id.token` string. */
@@ -106,5 +116,10 @@ export async function publishQuestion(
     body: JSON.stringify(body),
   });
   const j = (await res.json()) as { created: number; deduped: number; questions: { id: string }[] };
-  return { status: res.status, created: j.created, deduped: j.deduped, qid: j.questions?.[0]?.id ?? '' };
+  return {
+    status: res.status,
+    created: j.created,
+    deduped: j.deduped,
+    qid: j.questions?.[0]?.id ?? '',
+  };
 }

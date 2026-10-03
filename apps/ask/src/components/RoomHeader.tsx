@@ -6,11 +6,18 @@
  * Right: copy-link (toast), and an overflow menu (New page · Copy setup prompt ·
  *        Open link · a browser-local "recent pages" list).
  *
+ * The overflow menu is a SELF-CONTAINED controlled menu (not Kumo's DropdownMenu,
+ * whose `Trigger render={<Button/>}` didn't forward the trigger's click/ref, so it
+ * never opened). It's a plain `<button aria-haspopup="menu">` toggling an absolutely-
+ * positioned panel, with click-outside + Escape to close, roving focus into the first
+ * item on open, and focus restored to the trigger on close. Every item is a real
+ * `<a>`/`<button>`, keyboard-operable with the app-wide focus-visible ring.
+ *
  * The slug stays on one line and reads as the room's identity, not a form field,
  * until the owner edits it. Everything is dark-consistent and AA-contrast.
  */
-import { useEffect, useRef, useState } from 'react';
-import { Badge, Button, DropdownMenu, Input, Tooltip } from '@cloudflare/kumo';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Badge, Button, Input, Tooltip } from '@cloudflare/kumo';
 import {
   Check,
   ClockCounterClockwise,
@@ -36,8 +43,16 @@ interface Props {
   onCopySetupPrompt: () => void;
   onCopyLink: () => void;
   onNewPage: () => void;
-  onToast: (t: { title: string; description?: string; variant?: 'success' | 'error' | 'info' }) => void;
+  onToast: (t: {
+    title: string;
+    description?: string;
+    variant?: 'success' | 'error' | 'info';
+  }) => void;
 }
+
+/** Shared item classes so every menu row (button or link) looks + focuses identically. */
+const ITEM_CLASS =
+  'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-white/85 transition-colors hover:bg-white/10 focus-visible:bg-white/10';
 
 export function RoomHeader({
   room,
@@ -55,12 +70,60 @@ export function RoomHeader({
   const [error, setError] = useState<string | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Recent pages are read fresh when the menu mounts (localStorage, this device).
+  // ── overflow menu (self-contained, controlled) ──────────────────────────────
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuWrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+
+  // Recent pages are read fresh each render (localStorage, this device).
   const recents = getRecentPages().filter((p) => p.slug !== room.slug);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
+
+  const closeMenu = useCallback((restoreFocus = true) => {
+    setMenuOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
+
+  // Click-outside + Escape close. Bound only while the menu is open.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!menuWrapRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMenu();
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen, closeMenu]);
+
+  // On open, move focus to the first item so the menu is keyboard-operable.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const first = panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
+    first?.focus();
+  }, [menuOpen]);
+
+  // Run an item's action then close (restoring focus to the trigger).
+  const runItem = useCallback(
+    (fn: () => void) => {
+      fn();
+      closeMenu();
+    },
+    [closeMenu],
+  );
 
   const startEdit = () => {
     setDraftSlug(room.slug);
@@ -84,7 +147,11 @@ export function RoomHeader({
       onRoomChange(res.room);
       window.history.replaceState({}, '', `/${res.room.slug}`);
       setEditing(false);
-      onToast({ title: 'Renamed', description: `This page is now /${res.room.slug}`, variant: 'success' });
+      onToast({
+        title: 'Renamed',
+        description: `This page is now /${res.room.slug}`,
+        variant: 'success',
+      });
     } catch (e: unknown) {
       onRoomChange(previous); // revert the optimistic change
       const msg =
@@ -203,40 +270,88 @@ export function RoomHeader({
         <span className="hidden sm:inline">Copy link</span>
       </Tooltip>
 
-      <DropdownMenu>
-        <DropdownMenu.Trigger
-          render={<Button variant="ghost" shape="square" icon={DotsThreeVertical} aria-label="More actions" />}
+      {/* Self-contained overflow menu — opens reliably on click at every width. */}
+      <div ref={menuWrapRef} className="relative shrink-0">
+        <Button
+          ref={triggerRef}
+          variant="ghost"
+          shape="square"
+          icon={DotsThreeVertical}
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? menuId : undefined}
+          data-testid="room-menu-trigger"
+          onClick={() => setMenuOpen((o) => !o)}
         />
-        <DropdownMenu.Content>
-          <DropdownMenu.Item onClick={onNewPage} icon={Plus} data-testid="menu-new-page">
-            New page
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onClick={onCopySetupPrompt} icon={ClipboardIcon}>
-            Copy setup prompt
-          </DropdownMenu.Item>
-          <DropdownMenu.LinkItem href={roomUrl} icon={GlobeSimple}>
-            Open room link
-          </DropdownMenu.LinkItem>
-          {recents.length ? (
-            <>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Label>
-                <span className="inline-flex items-center gap-1.5 text-white/55">
-                  <ClockCounterClockwise size={13} /> Recent pages
-                </span>
-              </DropdownMenu.Label>
-              {recents.map((p) => (
-                <DropdownMenu.LinkItem key={p.slug} href={`/${p.slug}`} data-testid="menu-recent-page">
-                  <span className="flex w-full items-center justify-between gap-3">
-                    <span className="ask-mono truncate">ask/{p.slug}</span>
-                    <span className="shrink-0 text-xs text-white/60">{relativeTime(new Date(p.at).toISOString())}</span>
-                  </span>
-                </DropdownMenu.LinkItem>
-              ))}
-            </>
-          ) : null}
-        </DropdownMenu.Content>
-      </DropdownMenu>
+        {menuOpen ? (
+          <div
+            ref={panelRef}
+            id={menuId}
+            role="menu"
+            aria-label="Room actions"
+            data-testid="room-menu"
+            className="ask-enter absolute right-0 top-[calc(100%+6px)] z-40 flex max-h-[min(70vh,26rem)] w-64 flex-col overflow-auto rounded-xl border border-white/10 bg-[#0b0b18]/95 p-1.5 shadow-2xl backdrop-blur-md"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="menu-new-page"
+              className={ITEM_CLASS}
+              onClick={() => runItem(onNewPage)}
+            >
+              <Plus size={16} className="shrink-0 text-white/70" aria-hidden="true" />
+              New page
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="menu-copy-setup-prompt"
+              className={ITEM_CLASS}
+              onClick={() => runItem(onCopySetupPrompt)}
+            >
+              <ClipboardIcon size={16} className="shrink-0 text-white/70" aria-hidden="true" />
+              Copy setup prompt
+            </button>
+            <a
+              role="menuitem"
+              href={roomUrl}
+              data-testid="menu-open-room"
+              className={ITEM_CLASS}
+              onClick={() => closeMenu(false)}
+            >
+              <GlobeSimple size={16} className="shrink-0 text-white/70" aria-hidden="true" />
+              Open room link
+            </a>
+
+            {recents.length ? (
+              <>
+                <div className="my-1 h-px bg-white/10" role="separator" />
+                <p className="ask-mono flex items-center gap-1.5 px-3 py-1 text-[0.68rem] uppercase tracking-wider text-white/55">
+                  <ClockCounterClockwise size={13} aria-hidden="true" /> Recent pages
+                </p>
+                {recents.map((p) => (
+                  <a
+                    key={p.slug}
+                    role="menuitem"
+                    href={`/${p.slug}`}
+                    data-testid="menu-recent-page"
+                    className={ITEM_CLASS}
+                    onClick={() => closeMenu(false)}
+                  >
+                    <span className="flex w-full items-center justify-between gap-3">
+                      <span className="ask-mono truncate">ask/{p.slug}</span>
+                      <span className="shrink-0 text-xs text-white/60">
+                        {relativeTime(new Date(p.at).toISOString())}
+                      </span>
+                    </span>
+                  </a>
+                ))}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </header>
   );
 }

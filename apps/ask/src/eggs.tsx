@@ -213,11 +213,7 @@ function ShortcutLegend({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div
-      className="ask-legend-backdrop"
-      onClick={onClose}
-      data-testid="shortcut-legend-backdrop"
-    >
+    <div className="ask-legend-backdrop" onClick={onClose} data-testid="shortcut-legend-backdrop">
       <div
         ref={dialogRef}
         role="dialog"
@@ -273,7 +269,18 @@ export function Eggs({ slug }: Props) {
 
   // Egg 1 — Konami code.
   useKeySequence(
-    ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'],
+    [
+      'ArrowUp',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowLeft',
+      'ArrowRight',
+      'b',
+      'a',
+    ],
     () => setStarfield(true),
   );
 

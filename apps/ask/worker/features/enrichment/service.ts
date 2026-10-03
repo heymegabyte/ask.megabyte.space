@@ -80,7 +80,11 @@ function buildPrompt(input: EnrichmentInput): { openIds: string[]; prompt: strin
 
 /** Pull the first balanced JSON object out of a model string (tolerates stray prose/fences). */
 function extractJson(text: string): unknown {
-  const trimmed = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim();
   try {
     return JSON.parse(trimmed);
   } catch {
@@ -111,8 +115,13 @@ function textFromAiResponse(res: unknown): string | undefined {
   };
   if (typeof r.response === 'string') return r.response;
   if (typeof r.result?.response === 'string') return r.result.response;
-  const choices = (Array.isArray(r.choices) ? r.choices : undefined) ?? (Array.isArray(r.result?.choices) ? r.result.choices : undefined);
-  const content = choices?.[0] && typeof choices[0] === 'object' ? (choices[0] as { message?: { content?: unknown } }).message?.content : undefined;
+  const choices =
+    (Array.isArray(r.choices) ? r.choices : undefined) ??
+    (Array.isArray(r.result?.choices) ? r.result.choices : undefined);
+  const content =
+    choices?.[0] && typeof choices[0] === 'object'
+      ? (choices[0] as { message?: { content?: unknown } }).message?.content
+      : undefined;
   return typeof content === 'string' ? content : undefined;
 }
 
@@ -155,13 +164,27 @@ export async function runEnrichment(
 
       const text = textFromAiResponse(res);
       if (!text) {
-        console.log(JSON.stringify({ level: 'warn', msg: 'enrichment: empty AI response', model, shape: typeof res }));
+        console.log(
+          JSON.stringify({
+            level: 'warn',
+            msg: 'enrichment: empty AI response',
+            model,
+            shape: typeof res,
+          }),
+        );
         continue;
       }
 
       const parsed = AiEnrichment.safeParse(extractJson(text));
       if (!parsed.success) {
-        console.log(JSON.stringify({ level: 'warn', msg: 'enrichment: unparseable AI output', model, sample: text.slice(0, 180) }));
+        console.log(
+          JSON.stringify({
+            level: 'warn',
+            msg: 'enrichment: unparseable AI output',
+            model,
+            sample: text.slice(0, 180),
+          }),
+        );
         continue;
       }
 
@@ -194,7 +217,12 @@ export async function runEnrichment(
     } catch (err) {
       // Model error / transport failure — log (structured), try the fallback, then give up (null).
       console.log(
-        JSON.stringify({ level: 'warn', msg: 'enrichment model threw', model, error: String(err instanceof Error ? err.message : err) }),
+        JSON.stringify({
+          level: 'warn',
+          msg: 'enrichment model threw',
+          model,
+          error: String(err instanceof Error ? err.message : err),
+        }),
       );
       continue;
     }

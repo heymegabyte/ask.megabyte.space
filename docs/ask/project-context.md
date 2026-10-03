@@ -6,7 +6,9 @@
 > managed block below; the Ask helper only rewrites inside it.
 
 <!-- BEGIN ASK (managed — do not edit inside this block) -->
+
 _Last synced 2026-10-02T07:08:14.116Z._
 
 - Which database should the MVP use? _(from Ask room)_
+
 <!-- END ASK -->

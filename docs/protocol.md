@@ -68,22 +68,22 @@ server-inspected). Side states: `needs_clarification`, `superseded`, `deferred`,
 All `/api/*` responses carry `X-Request-Id` and `Cache-Control: no-store`; every response
 carries `X-Robots-Tag: noindex, nofollow`.
 
-| Method | Path | Auth | Purpose | Status |
-|---|---|---|---|---|
-| GET | `/api/health` | none | Liveness `{status,service,version,api}` | LIVE |
-| POST | `/api/v1/rooms` | session cookie | Create or (on user-chosen-slug collision) open a room | LIVE |
-| GET | `/api/v1/rooms/:id` | session cookie | Room snapshot; private→`{access:'denied'}` for non-owner | LIVE |
-| GET | `/api/v1/rooms/:id/changes?cursor=` | none (public room) | Cursor delta feed | LIVE |
-| POST | `/api/v1/rooms/:id/agents` | none (rate-limited) | Enroll an agent → `{install, token}` | LIVE |
-| POST | `/api/v1/rooms/:id/questions:batch` | optional agent bearer | Publish deduplicated questions | LIVE |
-| POST | `/api/v1/rooms/:id/questions/:qid/answers` | session cookie | Append an answer revision | LIVE |
-| POST | `/api/v1/rooms/:id/receipts` | agent bearer (required) | Record retrieval/application evidence | LIVE |
-| PATCH | `/api/v1/rooms/:id/settings` | owner | Rename (slug change) | LIVE |
-| POST | `/api/v1/rooms/:id/checkout` | owner | Start Stripe checkout for a private page | 501 (Increment 3) |
-| GET | `/api/v1/rooms/:id/events` | session cookie (WS upgrade) | WebSocket live feed | LIVE |
-| POST | `/api/billing/stripe/webhook` | Stripe signature | Billing inbox (verified + idempotent) | 501 (Increment 3) |
-| GET | `/integrations/manifest.json` | none | Versioned integration manifest | LIVE |
-| ALL | `/mcp`, `/mcp/*` | — | Native MCP | 501 (Increment 4) |
+| Method | Path                                       | Auth                        | Purpose                                                  | Status            |
+| ------ | ------------------------------------------ | --------------------------- | -------------------------------------------------------- | ----------------- |
+| GET    | `/api/health`                              | none                        | Liveness `{status,service,version,api}`                  | LIVE              |
+| POST   | `/api/v1/rooms`                            | session cookie              | Create or (on user-chosen-slug collision) open a room    | LIVE              |
+| GET    | `/api/v1/rooms/:id`                        | session cookie              | Room snapshot; private→`{access:'denied'}` for non-owner | LIVE              |
+| GET    | `/api/v1/rooms/:id/changes?cursor=`        | none (public room)          | Cursor delta feed                                        | LIVE              |
+| POST   | `/api/v1/rooms/:id/agents`                 | none (rate-limited)         | Enroll an agent → `{install, token}`                     | LIVE              |
+| POST   | `/api/v1/rooms/:id/questions:batch`        | optional agent bearer       | Publish deduplicated questions                           | LIVE              |
+| POST   | `/api/v1/rooms/:id/questions/:qid/answers` | session cookie              | Append an answer revision                                | LIVE              |
+| POST   | `/api/v1/rooms/:id/receipts`               | agent bearer (required)     | Record retrieval/application evidence                    | LIVE              |
+| PATCH  | `/api/v1/rooms/:id/settings`               | owner                       | Rename (slug change)                                     | LIVE              |
+| POST   | `/api/v1/rooms/:id/checkout`               | owner                       | Start Stripe checkout for a private page                 | 501 (Increment 3) |
+| GET    | `/api/v1/rooms/:id/events`                 | session cookie (WS upgrade) | WebSocket live feed                                      | LIVE              |
+| POST   | `/api/billing/stripe/webhook`              | Stripe signature            | Billing inbox (verified + idempotent)                    | 501 (Increment 3) |
+| GET    | `/integrations/manifest.json`              | none                        | Versioned integration manifest                           | LIVE              |
+| ALL    | `/mcp`, `/mcp/*`                           | —                           | Native MCP                                               | 501 (Increment 4) |
 
 Note on `claim`/`context-requests` routes: the route constants exist in `ROUTES`
 (`/rooms/:id/claim`, `/rooms/:id/context-requests`) but are not yet wired as handlers — treat

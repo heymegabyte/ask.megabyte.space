@@ -18,10 +18,16 @@ import {
   EnrichResponse as EnrichResponseSchema,
   type IntegrationManifest,
   IntegrationManifest as IntegrationManifestSchema,
+  type MeRoom,
+  type MeRoomsResponse,
+  MeRoomsResponse as MeRoomsResponseSchema,
   type PostAnswerResponse,
   PostAnswerResponse as PostAnswerResponseSchema,
   type ProjectUnderstanding,
   type QuestionQuality,
+  type RepoSlug,
+  type ResolveRepoResponse,
+  ResolveRepoResponse as ResolveRepoResponseSchema,
   type Room,
   type RoomSnapshot,
   RoomSnapshot as RoomSnapshotSchema,
@@ -59,7 +65,11 @@ async function readError(res: Response): Promise<ApiError> {
   let code = `http_${res.status}`;
   let details: Record<string, unknown> | undefined;
   try {
-    const body = (await res.json()) as { code?: string; error?: string; details?: Record<string, unknown> };
+    const body = (await res.json()) as {
+      code?: string;
+      error?: string;
+      details?: Record<string, unknown>;
+    };
     code = body.code ?? body.error ?? code;
     details = body.details;
   } catch {
@@ -135,7 +145,11 @@ export async function updateSettings(roomId: string, slug: string): Promise<{ ro
  * inline "coming soon" note rather than faking success.
  */
 export async function startCheckout(roomId: string): Promise<{ url: string }> {
-  return request(ROUTES.checkout(roomId), { method: 'POST', headers: JSON_HEADERS, body: '{}' }, (d) => d as { url: string });
+  return request(
+    ROUTES.checkout(roomId),
+    { method: 'POST', headers: JSON_HEADERS, body: '{}' },
+    (d) => d as { url: string },
+  );
 }
 
 /**
@@ -169,6 +183,31 @@ export async function getManifest(): Promise<IntegrationManifest> {
 }
 
 /**
+ * GET /me/rooms — the viewer's own rooms (the apex dashboard). Scoped to this
+ * browser's principal via the `ask_sid` cookie; a fresh principal gets an empty
+ * list, which the dashboard renders as its welcoming zero-state.
+ */
+export async function fetchMeRooms(): Promise<MeRoomsResponse> {
+  return request(ROUTES.meRooms, { method: 'GET' }, (d) => MeRoomsResponseSchema.parse(d));
+}
+
+/**
+ * GET /repos/<owner>/<repo> — resolve a git repo's `/{owner}/{repo}` URL to its
+ * canonical room. 200 → the room's canonical slug/url; 404 → no Ask project exists
+ * for that repo yet, returned as `undefined` so the router offers the get-started
+ * prompts (mirrors getRoom's 404-is-not-an-error handling). Any other failure throws.
+ */
+export async function resolveRepo(
+  owner: string,
+  repo: string,
+): Promise<ResolveRepoResponse | undefined> {
+  const res = await fetch(ROUTES.resolveRepo(owner, repo), { credentials: 'include' });
+  if (res.status === 404) return undefined;
+  if (!res.ok) throw await readError(res);
+  return ResolveRepoResponseSchema.parse(await res.json());
+}
+
+/**
  * POST /rooms/<id>/enrich — owner-only manual re-scan (§6). Returns the fresh
  * AI read + question-quality, or `{ ran:false, reason }` when enrichment is off,
  * the AI binding is absent, there's nothing to analyze, or the budget is spent.
@@ -176,8 +215,10 @@ export async function getManifest(): Promise<IntegrationManifest> {
  * lets the owner ask for one on demand.
  */
 export async function postEnrich(roomId: string): Promise<EnrichResponse> {
-  return request(ROUTES.enrich(roomId), { method: 'POST', headers: JSON_HEADERS, body: '{}' }, (d) =>
-    EnrichResponseSchema.parse(d),
+  return request(
+    ROUTES.enrich(roomId),
+    { method: 'POST', headers: JSON_HEADERS, body: '{}' },
+    (d) => EnrichResponseSchema.parse(d),
   );
 }
 
@@ -192,8 +233,12 @@ export type {
   AnswerValue,
   EnrichResponse,
   IntegrationManifest,
+  MeRoom,
+  MeRoomsResponse,
   ProjectUnderstanding,
   QuestionQuality,
+  RepoSlug,
+  ResolveRepoResponse,
   Room,
   RoomSnapshot,
 };

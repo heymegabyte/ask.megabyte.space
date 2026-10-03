@@ -170,7 +170,10 @@ function reducer(state: State, action: Action): State {
       if (action.result.kind === 'free') return { ...state, load: { status: 'free' } };
       if (action.result.kind === 'denied')
         return { ...state, load: { status: 'denied', slug: action.result.info.room.slug } };
-      return { ...state, load: { status: 'ready', store: snapshotToStore(action.result.snapshot) } };
+      return {
+        ...state,
+        load: { status: 'ready', store: snapshotToStore(action.result.snapshot) },
+      };
     }
     case 'load_error':
       return { ...state, load: { status: 'error', message: action.message } };
@@ -187,12 +190,18 @@ function reducer(state: State, action: Action): State {
     }
     case 'room': {
       if (state.load.status !== 'ready') return state;
-      return { ...state, load: { status: 'ready', store: { ...state.load.store, room: action.room } } };
+      return {
+        ...state,
+        load: { status: 'ready', store: { ...state.load.store, room: action.room } },
+      };
     }
     case 'connection':
       return { ...state, connection: action.state };
     case 'answer_pending':
-      return { ...state, pending: { ...state.pending, [action.pending.questionId]: action.pending } };
+      return {
+        ...state,
+        pending: { ...state.pending, [action.pending.questionId]: action.pending },
+      };
     case 'answer_error':
       return {
         ...state,
@@ -257,8 +266,7 @@ export function useRoom(identifier: string): UseRoom {
   });
 
   // room.id is the stable identity for WS + writes once the snapshot loads.
-  const roomId =
-    state.load.status === 'ready' ? state.load.store.room?.id : undefined;
+  const roomId = state.load.status === 'ready' ? state.load.store.room?.id : undefined;
   const cursor = state.load.status === 'ready' ? state.load.store.cursor : '0';
 
   const cursorRef = useRef(cursor);
@@ -274,7 +282,9 @@ export function useRoom(identifier: string): UseRoom {
     dispatch({ type: 'loading' });
     getRoom(identifier)
       .then((result) => alive && dispatch({ type: 'loaded', result, slug: identifier }))
-      .catch((e: unknown) => alive && dispatch({ type: 'load_error', message: (e as Error).message }));
+      .catch(
+        (e: unknown) => alive && dispatch({ type: 'load_error', message: (e as Error).message }),
+      );
     return () => {
       alive = false;
     };
@@ -311,7 +321,10 @@ export function useRoom(identifier: string): UseRoom {
 
     const connect = () => {
       if (closedRef.current) return;
-      dispatch({ type: 'connection', state: backoffRef.current > 500 ? 'reconnecting' : 'connecting' });
+      dispatch({
+        type: 'connection',
+        state: backoffRef.current > 500 ? 'reconnecting' : 'connecting',
+      });
       const ws = new WebSocket(roomEventsWsUrl(roomId));
       wsRef.current = ws;
 

@@ -25,8 +25,8 @@ answer a public room.
   can view and answer, but nothing is ever indexed by search engines.
 - **Private rooms are USD $10/month per page** on the hosted service — only you can read them.
   This is a billing policy of ask.megabyte.space, not a code paywall. A lapse never makes a
-  private room public (7-day grace, then private read-only). *(Private rooms + billing are
-  Increment 3 — see the roadmap.)*
+  private room public (7-day grace, then private read-only). _(Private rooms + billing are
+  Increment 3 — see the roadmap.)_
 
 ## Self-hosting
 
@@ -71,16 +71,16 @@ for unbuilt features return an honest `501`, never a fake success.
 
 ## Docs
 
-| Doc | What |
-|---|---|
-| [plan](docs/plan.md) | Implementation plan + 5-increment build order |
-| [capability-matrix](docs/capability-matrix.md) | Every capability × LIVE / adapter-only / planned |
-| [protocol](docs/protocol.md) | Entities, routes, events, reconnect semantics |
-| [architecture](docs/architecture.md) | Components, data flow, DO-per-room, assets gotcha |
-| [decisions/](docs/decisions/) | ADRs 0001–0005 |
-| [auth-integration](docs/auth-integration.md) | Anonymous owner, agent token, shared OAuth |
-| [self-hosting](docs/self-hosting.md) · [deployment](docs/deployment.md) | Run your own / ship it |
-| [privacy](docs/privacy.md) · [verification](docs/verification.md) | Discovery-off model / acceptance gate |
+| Doc                                                                     | What                                              |
+| ----------------------------------------------------------------------- | ------------------------------------------------- |
+| [plan](docs/plan.md)                                                    | Implementation plan + 5-increment build order     |
+| [capability-matrix](docs/capability-matrix.md)                          | Every capability × LIVE / adapter-only / planned  |
+| [protocol](docs/protocol.md)                                            | Entities, routes, events, reconnect semantics     |
+| [architecture](docs/architecture.md)                                    | Components, data flow, DO-per-room, assets gotcha |
+| [decisions/](docs/decisions/)                                           | ADRs 0001–0005                                    |
+| [auth-integration](docs/auth-integration.md)                            | Anonymous owner, agent token, shared OAuth        |
+| [self-hosting](docs/self-hosting.md) · [deployment](docs/deployment.md) | Run your own / ship it                            |
+| [privacy](docs/privacy.md) · [verification](docs/verification.md)       | Discovery-off model / acceptance gate             |
 
 ## License
 

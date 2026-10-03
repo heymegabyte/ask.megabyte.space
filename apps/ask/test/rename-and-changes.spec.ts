@@ -66,7 +66,11 @@ describe('changes event chain', () => {
   it('the changes feed returns the full event chain after cursor=0', async () => {
     const room = await createRoom();
     const { bearer } = await enrollAgent(room.id);
-    const { qid } = await publishQuestion(room.id, bearer, singleChoiceQuestion('changes-db-choice'));
+    const { qid } = await publishQuestion(
+      room.id,
+      bearer,
+      singleChoiceQuestion('changes-db-choice'),
+    );
     const an = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/questions/${qid}/answers`, {
       method: 'POST',
       headers: jsonHeaders(),
@@ -76,7 +80,12 @@ describe('changes event chain', () => {
     await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/receipts`, {
       method: 'POST',
       headers: jsonHeaders({ authorization: bearer }),
-      body: JSON.stringify({ questionId: qid, answerId: aid, state: 'applied', status: 'applied_to_project' }),
+      body: JSON.stringify({
+        questionId: qid,
+        answerId: aid,
+        state: 'applied',
+        status: 'applied_to_project',
+      }),
     });
 
     const ch = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/changes?cursor=0`);
@@ -95,7 +104,9 @@ describe('changes event chain', () => {
     const room = await createRoom();
     const head = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/changes?cursor=0`);
     const { cursor } = (await head.json()) as { cursor: string };
-    const after = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/changes?cursor=${cursor}`);
+    const after = await SELF.fetch(
+      `${ORIGIN}/api/${API}/rooms/${room.id}/changes?cursor=${cursor}`,
+    );
     const afterJ = (await after.json()) as { events: unknown[] };
     expect(afterJ.events.length).toBe(0);
   });

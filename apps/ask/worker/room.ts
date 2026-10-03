@@ -27,10 +27,7 @@ import {
   type Visibility,
 } from '@ask/contracts';
 import type { Env } from './env';
-import {
-  runEnrichment,
-  type EnrichmentInputQuestion,
-} from './features/enrichment/service';
+import { runEnrichment, type EnrichmentInputQuestion } from './features/enrichment/service';
 import {
   newAnswerId,
   newEventId,
@@ -186,12 +183,52 @@ export class RoomDurableObject extends DurableObject<Env> {
     };
   }
 
+  /** A compact read of this room for the owner's dashboard (§28-ext) — counts + repos + AI read. */
+  async dashboardSummary() {
+    const meta = this.metaRow();
+    if (!meta) return null;
+    const room = this.toRoom(meta);
+    const count = (sql: string): number => Number(this.rows(sql)[0]?.c ?? 0);
+    const repos = new Set<string>();
+    for (const r of this.rows('SELECT data FROM questions')) {
+      const repo = (JSON.parse(r.data) as Question).repo;
+      if (repo) repos.add(repo);
+    }
+    for (const r of this.rows('SELECT data FROM agents')) {
+      const repo = (JSON.parse(r.data) as AgentInstallation).repo;
+      if (repo) repos.add(repo);
+    }
+    const lastActivityAt = this.rows('SELECT MAX(updated_at) AS t FROM questions')[0]?.t as
+      string | undefined;
+    return {
+      room,
+      questionCount: count('SELECT COUNT(*) AS c FROM questions'),
+      openCount: count("SELECT COUNT(*) AS c FROM questions WHERE state = 'open'"),
+      answeredCount: count("SELECT COUNT(*) AS c FROM questions WHERE state = 'answered'"),
+      repos: [...repos],
+      understanding: this.currentUnderstanding(),
+      lastActivityAt: lastActivityAt ?? undefined,
+    };
+  }
+
   // ── mutations ──────────────────────────────────────────────────────────────
 
   async postQuestions(input: QuestionInput[], installId?: string): Promise<PostQuestionsResponse> {
     let created = 0;
     let deduped = 0;
     const out: Question[] = [];
+    // Stamp each question with the posting agent's git repo so the UI can group by project (§28-ext).
+    let installRepo: string | undefined;
+    if (installId) {
+      const a = this.rows('SELECT data FROM agents WHERE id = ?', installId)[0];
+      if (a) {
+        try {
+          installRepo = (JSON.parse(a.data) as AgentInstallation).repo;
+        } catch {
+          installRepo = undefined;
+        }
+      }
+    }
     for (const q of input) {
       const found = this.rows('SELECT data FROM questions WHERE dedup_key = ?', q.dedupKey)[0];
       if (found) {
@@ -206,6 +243,7 @@ export class RoomDurableObject extends DurableObject<Env> {
         state: 'open',
         revision: 0,
         createdByInstall: installId,
+        repo: installRepo,
         createdAt: ts,
         updatedAt: ts,
         options: q.options ?? [],
@@ -282,7 +320,9 @@ export class RoomDurableObject extends DurableObject<Env> {
     return answer;
   }
 
-  async enrollAgent(input: Omit<AgentInstallation, 'id' | 'status' | 'trust'>): Promise<EnrollAgentResponse> {
+  async enrollAgent(
+    input: Omit<AgentInstallation, 'id' | 'status' | 'trust'>,
+  ): Promise<EnrollAgentResponse> {
     const token = newSecret();
     const tokenHash = await sha256(token);
     const install: AgentInstallation = {
@@ -292,6 +332,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       trust: 'public_contributor',
       branch: input.branch,
       task: input.task,
+      repo: input.repo,
+      repoUrl: input.repoUrl,
       status: 'working',
       features: input.features ?? [],
       lastSeenAt: now(),
@@ -371,11 +413,21 @@ export class RoomDurableObject extends DurableObject<Env> {
       now(),
       row.id,
     );
-    this.append('room.visibility_changed', epoch, { visibility, epoch, room: this.toRoom(this.metaRow()!) });
+    this.append('room.visibility_changed', epoch, {
+      visibility,
+      epoch,
+      room: this.toRoom(this.metaRow()!),
+    });
     if (visibility === 'private') {
       for (const ws of this.ctx.getWebSockets()) {
         const meta = this.wsMeta(ws);
-        if (!meta || (meta.role !== 'owner' && meta.role !== 'admin' && meta.role !== 'answerer' && meta.role !== 'viewer')) {
+        if (
+          !meta ||
+          (meta.role !== 'owner' &&
+            meta.role !== 'admin' &&
+            meta.role !== 'answerer' &&
+            meta.role !== 'viewer')
+        ) {
           ws.close(4403, 'room is now private');
         }
       }
@@ -421,7 +473,11 @@ export class RoomDurableObject extends DurableObject<Env> {
             : 'model_error';
       return { ran: false, reason };
     }
-    return { ran: true, understanding: result.understanding, questionQuality: result.questionQuality };
+    return {
+      ran: true,
+      understanding: result.understanding,
+      questionQuality: result.questionQuality,
+    };
   }
 
   /**
@@ -569,7 +625,8 @@ export class RoomDurableObject extends DurableObject<Env> {
     const url = new URL(request.url);
     const role = (url.searchParams.get('role') as Role) || 'guest';
     const handle = url.searchParams.get('handle') || 'guest';
-    const participantId = url.searchParams.get('pid') || `p_${crypto.randomUUID().replace(/-/g, '')}`;
+    const participantId =
+      url.searchParams.get('pid') || `p_${crypto.randomUUID().replace(/-/g, '')}`;
     const room = this.metaRow();
     if (!room) return new Response('room not found', { status: 404 });
 
@@ -579,9 +636,22 @@ export class RoomDurableObject extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, [role]);
     const meta: WsMeta = { role, epoch: room.visibility_epoch, participantId, handle };
     server.serializeAttachment(meta);
-    server.send(JSON.stringify({ type: 'hello', cursor: String(room.revision), epoch: room.visibility_epoch }));
+    server.send(
+      JSON.stringify({
+        type: 'hello',
+        cursor: String(room.revision),
+        epoch: room.visibility_epoch,
+      }),
+    );
     this.append('participant.joined', 0, {
-      participant: { id: participantId, type: role === 'owner' ? 'owner' : 'guest', handle, role, connected: true, lastSeenAt: now() },
+      participant: {
+        id: participantId,
+        type: role === 'owner' ? 'owner' : 'guest',
+        handle,
+        role,
+        connected: true,
+        lastSeenAt: now(),
+      },
     });
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -606,7 +676,14 @@ export class RoomDurableObject extends DurableObject<Env> {
     const meta = this.wsMeta(ws);
     if (meta)
       this.append('participant.left', 0, {
-        participant: { id: meta.participantId, type: meta.role === 'owner' ? 'owner' : 'guest', handle: meta.handle, role: meta.role, connected: false, lastSeenAt: now() },
+        participant: {
+          id: meta.participantId,
+          type: meta.role === 'owner' ? 'owner' : 'guest',
+          handle: meta.handle,
+          role: meta.role,
+          connected: false,
+          lastSeenAt: now(),
+        },
       });
   }
 
@@ -617,7 +694,11 @@ export class RoomDurableObject extends DurableObject<Env> {
   // ── internals ──────────────────────────────────────────────────────────────
 
   /** Append an event (monotonic seq), bump room revision, broadcast to live sockets. */
-  private append(type: RoomEvent['type'], entityRevision: number, payload: Record<string, unknown>): RoomEvent {
+  private append(
+    type: RoomEvent['type'],
+    entityRevision: number,
+    payload: Record<string, unknown>,
+  ): RoomEvent {
     const id = newEventId();
     const at = now();
     this.sql.exec(
@@ -649,7 +730,11 @@ export class RoomDurableObject extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       const meta = this.wsMeta(ws);
       // Private rooms: only deliver to connections at the current access epoch (§13).
-      if (room && room.visibility === 'private' && (!meta || meta.epoch !== room.visibility_epoch)) {
+      if (
+        room &&
+        room.visibility === 'private' &&
+        (!meta || meta.epoch !== room.visibility_epoch)
+      ) {
         continue;
       }
       try {

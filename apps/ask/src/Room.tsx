@@ -18,7 +18,14 @@
  * draft, and a newly-arrived question never steals focus or reorders the active
  * card (we render in a stable id order; horizon only buckets, it never reshuffles).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Badge, Banner, Button, Loader, Tooltip } from '@cloudflare/kumo';
 import {
   ArrowClockwise,
@@ -45,7 +52,14 @@ import type {
   QuestionQuality,
 } from '@ask/contracts';
 import { ROUTES } from '@ask/contracts';
-import { createRoom, getManifest, postContextRequest, postEnrich, startCheckout, ApiError } from './api';
+import {
+  createRoom,
+  getManifest,
+  postContextRequest,
+  postEnrich,
+  startCheckout,
+  ApiError,
+} from './api';
 import { useRoom, type RoomStore } from './useRoom';
 import { buildSetupPrompt } from './setupPrompt';
 import { agentStatusChip, answerStatusChip } from './status';
@@ -54,9 +68,22 @@ import { RoomHeader } from './components/RoomHeader';
 import { ProjectUnderstanding } from './ProjectUnderstanding';
 import { QuestionCard, emptyDraft, type QuestionDraft } from './components/QuestionCard';
 import { useZenMode } from './eggs';
-import { Card, Eyebrow, Heading, Mono, Muted, clockTime, relativeTime, slugAccentHue } from './components/ui';
+import {
+  Card,
+  Eyebrow,
+  Heading,
+  Mono,
+  Muted,
+  clockTime,
+  relativeTime,
+  slugAccentHue,
+} from './components/ui';
 
-type ToastInput = { title: string; description?: string; variant?: 'success' | 'error' | 'info' | 'warning' };
+type ToastInput = {
+  title: string;
+  description?: string;
+  variant?: 'success' | 'error' | 'info' | 'warning';
+};
 type TabKey = 'questions' | 'decisions' | 'activity';
 
 const TOP_COUNT = 5;
@@ -119,6 +146,26 @@ function orderQuestions(questions: Question[]): Question[] {
       return a.i - b.i;
     })
     .map((x) => x.q);
+}
+
+/** Bucket key for a question's source repo — `''` means "no repo" (the "This room" group). */
+const NO_REPO = '';
+
+/**
+ * Group an ORDERED question list by `question.repo`, preserving the incoming order
+ * both within and across groups (a group's rank = where its first question appears),
+ * so grouping never reshuffles the active card. The no-repo bucket ("This room") is
+ * included like any other. Returns `[repoKey, questions][]`.
+ */
+function groupByRepo(ordered: Question[]): Array<[string, Question[]]> {
+  const groups = new Map<string, Question[]>();
+  for (const q of ordered) {
+    const key = q.repo ?? NO_REPO;
+    const arr = groups.get(key);
+    if (arr) arr.push(q);
+    else groups.set(key, [q]);
+  }
+  return [...groups.entries()];
 }
 
 export function Room({ identifier, onToast = noop }: Props) {
@@ -185,9 +232,17 @@ export function Room({ identifier, onToast = noop }: Props) {
     setSetupPrompt(prompt);
     try {
       await navigator.clipboard.writeText(prompt);
-      onToast({ title: 'Setup prompt copied', description: 'Paste it into your coding agent.', variant: 'success' });
+      onToast({
+        title: 'Setup prompt copied',
+        description: 'Paste it into your coding agent.',
+        variant: 'success',
+      });
     } catch {
-      onToast({ title: 'Copy failed', description: 'Select the text below and copy it manually.', variant: 'error' });
+      onToast({
+        title: 'Copy failed',
+        description: 'Select the text below and copy it manually.',
+        variant: 'error',
+      });
     }
   }, [load, onToast]);
 
@@ -207,7 +262,11 @@ export function Room({ identifier, onToast = noop }: Props) {
       const res = await createRoom();
       window.location.assign(`/${res.room.slug}`);
     } catch {
-      onToast({ title: "Couldn't open a new page", description: 'Try again in a moment.', variant: 'error' });
+      onToast({
+        title: "Couldn't open a new page",
+        description: 'Try again in a moment.',
+        variant: 'error',
+      });
     }
   }, [onToast]);
 
@@ -234,7 +293,10 @@ export function Room({ identifier, onToast = noop }: Props) {
     async (q: Question): Promise<boolean> => {
       if (!roomId) return false;
       try {
-        const { accepted } = await postContextRequest(roomId, { questionId: q.id, kind: 'explain' });
+        const { accepted } = await postContextRequest(roomId, {
+          questionId: q.id,
+          kind: 'explain',
+        });
         if (accepted) {
           onToast({
             title: 'Asked the agent to explain',
@@ -244,7 +306,11 @@ export function Room({ identifier, onToast = noop }: Props) {
         }
         return accepted;
       } catch {
-        onToast({ title: "Couldn't send that request", description: 'Try again shortly.', variant: 'error' });
+        onToast({
+          title: "Couldn't send that request",
+          description: 'Try again shortly.',
+          variant: 'error',
+        });
         return false;
       }
     },
@@ -274,7 +340,11 @@ export function Room({ identifier, onToast = noop }: Props) {
         });
       }
     } catch {
-      onToast({ title: 'Couldn’t refresh the summary', description: 'Try again shortly.', variant: 'error' });
+      onToast({
+        title: 'Couldn’t refresh the summary',
+        description: 'Try again shortly.',
+        variant: 'error',
+      });
     } finally {
       setRescanning(false);
     }
@@ -298,7 +368,9 @@ export function Room({ identifier, onToast = noop }: Props) {
           <Heading level={1} className="ask-h2">
             Couldn't load this page
           </Heading>
-          <Muted className="text-center">Something went wrong reaching the server. Your work is safe.</Muted>
+          <Muted className="text-center">
+            Something went wrong reaching the server. Your work is safe.
+          </Muted>
           <Button variant="primary" icon={ArrowClockwise} onClick={() => void refresh()}>
             Try again
           </Button>
@@ -320,7 +392,8 @@ export function Room({ identifier, onToast = noop }: Props) {
             This page is private
           </Heading>
           <Muted className="text-center">
-            Only its owner can view this room. If it's yours, open it from the device that created it.
+            Only its owner can view this room. If it's yours, open it from the device that created
+            it.
           </Muted>
           <Button variant="outline" onClick={() => window.location.assign('/')}>
             Start a new page
@@ -348,9 +421,9 @@ export function Room({ identifier, onToast = noop }: Props) {
 
   const open = store.questions.filter((q) => q.state === 'open' || q.state === 'answered');
   const ordered = orderQuestions(open);
-  const top = ordered.slice(0, TOP_COUNT);
-  const queued = ordered.slice(TOP_COUNT);
-  const latestAgent = [...store.agents].sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))[0];
+  const latestAgent = [...store.agents].sort((a, b) =>
+    (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''),
+  )[0];
 
   const answeredIds = new Set(store.answers.map((a) => a.questionId));
   const unanswered = ordered.filter((q) => !answeredIds.has(q.id)).length;
@@ -361,9 +434,15 @@ export function Room({ identifier, onToast = noop }: Props) {
   );
 
   const answerFor = (qid: string) =>
-    [...store.answers].filter((a) => a.questionId === qid).sort((a, b) => b.revision - a.revision)[0];
+    [...store.answers]
+      .filter((a) => a.questionId === qid)
+      .sort((a, b) => b.revision - a.revision)[0];
 
-  const handleSubmit = async (q: Question, value: AnswerValue | undefined, text: string | undefined) => {
+  const handleSubmit = async (
+    q: Question,
+    value: AnswerValue | undefined,
+    text: string | undefined,
+  ) => {
     const ok = await submitAnswer(q.id, { value, text });
     if (ok) {
       setDrafts((d) => {
@@ -373,13 +452,22 @@ export function Room({ identifier, onToast = noop }: Props) {
       });
       const kind = value?.kind;
       onToast({
-        title: kind === 'skip' ? 'Skipped for now' : kind === 'delegate' ? 'Delegated to the agent' : 'Answer saved',
+        title:
+          kind === 'skip'
+            ? 'Skipped for now'
+            : kind === 'delegate'
+              ? 'Delegated to the agent'
+              : 'Answer saved',
         variant: 'success',
       });
       // In focus mode, advance to the next unanswered card automatically.
       if (focusMode) setFocusIndex((i) => Math.min(i + 1, Math.max(0, ordered.length - 1)));
     } else {
-      onToast({ title: 'Answer not saved', description: 'Your draft is kept — try again.', variant: 'error' });
+      onToast({
+        title: 'Answer not saved',
+        description: 'Your draft is kept — try again.',
+        variant: 'error',
+      });
     }
   };
 
@@ -407,6 +495,57 @@ export function Room({ identifier, onToast = noop }: Props) {
       </div>
     );
   };
+
+  /** One collapsed "Next & later" row (auto-opens when it has a saved answer or a live draft). */
+  const renderQueueRow = (q: Question) => {
+    const hasAnswer = Boolean(answerFor(q.id));
+    const draft = draftFor(q.id);
+    const hasDraft = Boolean(
+      draft.selected.length || draft.text.trim() || draft.number || draft.link.trim(),
+    );
+    const isOpen = expanded[q.id] || hasAnswer || hasDraft;
+    return isOpen ? (
+      renderCard(q)
+    ) : (
+      <QueueRow
+        key={q.id}
+        question={q}
+        answered={hasAnswer}
+        onExpand={() => toggleExpanded(q.id)}
+      />
+    );
+  };
+
+  /**
+   * Render an ordered question set as the Now (top N) + Next & later queue. Used both
+   * for the flat single-repo list AND for each per-repo group, so progressive disclosure,
+   * answered-on-reload, and live-merge behavior are identical in every path.
+   * `showNowLabel` keeps the "Now — N to decide" eyebrow off per-group blocks (the group
+   * header already names the section) while keeping it for the flat list.
+   */
+  const renderOrderedList = (list: Question[], showNowLabel = true) => {
+    const nowList = list.slice(0, TOP_COUNT);
+    const laterList = list.slice(TOP_COUNT);
+    return (
+      <>
+        <section className="flex flex-col gap-4">
+          {showNowLabel ? <Eyebrow>Now — {nowList.length} to decide</Eyebrow> : null}
+          {nowList.map((q) => renderCard(q, false, true))}
+        </section>
+        {laterList.length ? (
+          <section data-zen-hide className="flex flex-col gap-2">
+            <Eyebrow>Next &amp; later · {laterList.length}</Eyebrow>
+            {laterList.map((q) => renderQueueRow(q))}
+          </section>
+        ) : null}
+      </>
+    );
+  };
+
+  // Group the ordered questions by their source repo. Headers render ONLY when ≥2
+  // distinct repos are present; otherwise the list stays flat (unchanged behavior).
+  const repoGroups = groupByRepo(ordered);
+  const grouped = repoGroups.length >= 2;
 
   const focusQ = ordered[Math.min(focusIndex, Math.max(0, ordered.length - 1))];
 
@@ -455,7 +594,9 @@ export function Room({ identifier, onToast = noop }: Props) {
               className="flex items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-2 text-sm text-amber-200"
             >
               <ArrowClockwise size={15} className="animate-spin" />
-              {connection === 'closed' ? 'Connection lost — reconnecting…' : 'Reconnecting to live updates…'}
+              {connection === 'closed'
+                ? 'Connection lost — reconnecting…'
+                : 'Reconnecting to live updates…'}
             </div>
           ) : null}
         </div>
@@ -467,7 +608,12 @@ export function Room({ identifier, onToast = noop }: Props) {
             data-testid="first-answer-celebrate"
             className="ask-celebrate ask-enter flex items-center gap-2.5 rounded-xl border border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-4 py-2.5 text-sm text-white/85"
           >
-            <CheckCircle size={16} weight="fill" className="shrink-0 text-[color:var(--ask-accent)]" aria-hidden="true" />
+            <CheckCircle
+              size={16}
+              weight="fill"
+              className="shrink-0 text-[color:var(--ask-accent)]"
+              aria-hidden="true"
+            />
             First answer in — your agent is listening.
           </div>
         ) : null}
@@ -499,94 +645,83 @@ export function Room({ identifier, onToast = noop }: Props) {
 
         {tab === 'questions' ? (
           <div role="tabpanel" id="tabpanel-questions" aria-labelledby="tab-questions">
-          {ordered.length === 0 ? (
-            <QuestionsEmpty connected={connected} onCopySetupPrompt={() => void copySetupPrompt()} />
-          ) : focusMode && focusQ ? (
-            // ── Mobile one-question focus view ──
-            <section aria-live="polite" className="ask-zen-focus flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <Eyebrow>
-                  Question {Math.min(focusIndex + 1, ordered.length)} of {ordered.length}
-                </Eyebrow>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    shape="square"
-                    icon={ArrowLeft}
-                    aria-label="Previous question"
-                    disabled={focusIndex === 0}
-                    onClick={() => setFocusIndex((i) => Math.max(0, i - 1))}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    shape="square"
-                    icon={ArrowRight}
-                    aria-label="Next question"
-                    disabled={focusIndex >= ordered.length - 1}
-                    onClick={() => setFocusIndex((i) => Math.min(ordered.length - 1, i + 1))}
-                  />
+            {ordered.length === 0 ? (
+              <QuestionsEmpty
+                connected={connected}
+                onCopySetupPrompt={() => void copySetupPrompt()}
+              />
+            ) : focusMode && focusQ ? (
+              // ── Mobile one-question focus view ──
+              <section aria-live="polite" className="ask-zen-focus flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <Eyebrow>
+                    Question {Math.min(focusIndex + 1, ordered.length)} of {ordered.length}
+                  </Eyebrow>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      shape="square"
+                      icon={ArrowLeft}
+                      aria-label="Previous question"
+                      disabled={focusIndex === 0}
+                      onClick={() => setFocusIndex((i) => Math.max(0, i - 1))}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      shape="square"
+                      icon={ArrowRight}
+                      aria-label="Next question"
+                      disabled={focusIndex >= ordered.length - 1}
+                      onClick={() => setFocusIndex((i) => Math.min(ordered.length - 1, i + 1))}
+                    />
+                  </div>
                 </div>
-              </div>
-              {renderCard(focusQ, true)}
-              {/* Rapid-answer rail: skip / delegate without scrolling to the card footer. */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => void handleSubmit(focusQ, { kind: 'skip' }, undefined)}
-                >
-                  Skip
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => void handleSubmit(focusQ, { kind: 'delegate' }, undefined)}
-                >
-                  Let the agent decide
-                </Button>
-              </div>
-            </section>
-          ) : (
-            // ── Desktop / mobile list view ──
-            <div
-              className={['ask-zen-focus flex flex-col gap-4', zen ? 'ask-zen-active' : ''].join(' ')}
-              aria-live="polite"
-              aria-relevant="additions"
-            >
-              <section className="flex flex-col gap-4">
-                <Eyebrow>Now — {top.length} to decide</Eyebrow>
-                {top.map((q) => renderCard(q, false, true))}
+                {renderCard(focusQ, true)}
+                {/* Rapid-answer rail: skip / delegate without scrolling to the card footer. */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => void handleSubmit(focusQ, { kind: 'skip' }, undefined)}
+                  >
+                    Skip
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => void handleSubmit(focusQ, { kind: 'delegate' }, undefined)}
+                  >
+                    Let the agent decide
+                  </Button>
+                </div>
               </section>
-
-              {queued.length ? (
-                <section data-zen-hide className="flex flex-col gap-2">
-                  <Eyebrow>Next &amp; later · {queued.length}</Eyebrow>
-                  {queued.map((q) => {
-                    // Auto-open a queued row if it has a saved answer or an in-progress draft,
-                    // so nothing you've touched hides behind a collapsed row.
-                    const hasAnswer = Boolean(answerFor(q.id));
-                    const draft = draftFor(q.id);
-                    const hasDraft = Boolean(
-                      draft.selected.length || draft.text.trim() || draft.number || draft.link.trim(),
-                    );
-                    const open = expanded[q.id] || hasAnswer || hasDraft;
-                    return open ? (
-                      renderCard(q)
-                    ) : (
-                      <QueueRow
-                        key={q.id}
-                        question={q}
-                        answered={hasAnswer}
-                        onExpand={() => toggleExpanded(q.id)}
-                      />
-                    );
-                  })}
-                </section>
-              ) : null}
-            </div>
-          )}
+            ) : (
+              // ── Desktop / mobile list view ──
+              <div
+                className={['ask-zen-focus flex flex-col gap-4', zen ? 'ask-zen-active' : ''].join(
+                  ' ',
+                )}
+                aria-live="polite"
+                aria-relevant="additions"
+              >
+                {grouped
+                  ? // ── Grouped by source repo (≥2 distinct repos) ──
+                    repoGroups.map(([repoKey, list]) => (
+                      <section
+                        key={repoKey || '__room__'}
+                        data-testid="repo-group"
+                        className="flex flex-col gap-3"
+                      >
+                        <RepoGroupHeader repo={repoKey} count={list.length} />
+                        <div className="flex flex-col gap-4">{renderOrderedList(list, false)}</div>
+                      </section>
+                    ))
+                  : // ── Single flat list (0–1 repos) — unchanged behavior ──
+                    renderOrderedList(ordered, true)}
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -766,7 +901,11 @@ function ConnectionPanel({
 }) {
   if (!connected) {
     return (
-      <Card as="section" glow className="ask-aurora ask-enter relative flex flex-col gap-3 overflow-hidden p-6">
+      <Card
+        as="section"
+        glow
+        className="ask-aurora ask-enter relative flex flex-col gap-3 overflow-hidden p-6"
+      >
         <Eyebrow>
           <span className="inline-flex items-center gap-1.5">
             <PlugsConnected size={14} /> Step 1
@@ -776,11 +915,16 @@ function ConnectionPanel({
           Connect your coding agent
         </Heading>
         <Muted>
-          Paste this into Claude Code, Codex, Cursor, Gemini CLI, or OpenCode. The questions it would
-          otherwise guess at will appear here — live.
+          Paste this into Claude Code, Codex, Cursor, Gemini CLI, or OpenCode. The questions it
+          would otherwise guess at will appear here — live.
         </Muted>
         <div>
-          <Button variant="primary" icon={ClipboardIcon} data-testid="copy-setup-prompt" onClick={onCopySetupPrompt}>
+          <Button
+            variant="primary"
+            icon={ClipboardIcon}
+            data-testid="copy-setup-prompt"
+            onClick={onCopySetupPrompt}
+          >
             Copy setup prompt
           </Button>
         </div>
@@ -805,9 +949,10 @@ function ConnectionPanel({
   return (
     <section className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
       <span
-        className={['ask-pulse inline-flex items-center gap-1.5 text-sm font-medium', isLive ? 'text-emerald-400' : 'text-amber-300'].join(
-          ' ',
-        )}
+        className={[
+          'ask-pulse inline-flex items-center gap-1.5 text-sm font-medium',
+          isLive ? 'text-emerald-400' : 'text-amber-300',
+        ].join(' ')}
         data-testid="connection-state"
       >
         <span className="relative inline-block h-2 w-2 rounded-full bg-current" />
@@ -835,12 +980,20 @@ function ConnectionPanel({
             </span>
           ) : null}
           {latestAgent.lastSeenAt ? (
-            <span className="ml-auto text-xs text-white/55">checked in {relativeTime(latestAgent.lastSeenAt)}</span>
+            <span className="ml-auto text-xs text-white/55">
+              checked in {relativeTime(latestAgent.lastSeenAt)}
+            </span>
           ) : null}
         </>
       ) : null}
 
-      <Button variant="ghost" size="sm" icon={ClipboardIcon} className="ml-auto" onClick={onCopySetupPrompt}>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ClipboardIcon}
+        className="ml-auto"
+        onClick={onCopySetupPrompt}
+      >
         Setup prompt
       </Button>
     </section>
@@ -883,7 +1036,12 @@ function QueueRow({
         {question.title}
       </span>
       {answered ? (
-        <CheckCircle size={15} weight="fill" className="shrink-0 text-emerald-400" aria-label="Answered" />
+        <CheckCircle
+          size={15}
+          weight="fill"
+          className="shrink-0 text-emerald-400"
+          aria-label="Answered"
+        />
       ) : null}
       <span className="ask-mono shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wider text-white/60 ring-1 ring-white/10">
         {KIND_LABEL[question.kind]}
@@ -894,6 +1052,27 @@ function QueueRow({
         aria-hidden="true"
       />
     </button>
+  );
+}
+
+/** RepoGroupHeader — a small `owner/repo` header above a repo's question group.
+ *  The no-repo bucket renders as "This room". Shown only when ≥2 distinct repos are
+ *  present (§28-ext) so a single-project room stays a clean flat list. */
+function RepoGroupHeader({ repo, count }: { repo: string; count: number }) {
+  const isRoom = !repo;
+  return (
+    <div
+      className="flex items-center gap-2 border-b border-white/10 pb-1.5"
+      data-testid="repo-group-header"
+    >
+      <GitBranch size={14} className="shrink-0 text-[color:var(--ask-accent)]" aria-hidden="true" />
+      <span className="ask-mono truncate text-[0.82rem] font-semibold text-white/85">
+        {isRoom ? 'This room' : repo}
+      </span>
+      <span className="ask-mono shrink-0 rounded-full bg-white/5 px-1.5 text-[0.65rem] text-white/55 ring-1 ring-white/10">
+        {count}
+      </span>
+    </div>
   );
 }
 
@@ -908,7 +1087,12 @@ function SharperHint({ improvement }: { improvement: string }) {
       data-testid="question-sharper-hint"
       className="ask-enter ml-3 flex items-start gap-1.5 border-l-2 border-[color:var(--ask-accent-line)] pl-2.5 text-[0.78rem] leading-snug text-white/55"
     >
-      <Lightbulb size={13} weight="fill" className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]" aria-hidden="true" />
+      <Lightbulb
+        size={13}
+        weight="fill"
+        className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]"
+        aria-hidden="true"
+      />
       <span>
         <span className="font-medium text-white/70">AI suggestion: </span>
         {improvement}
@@ -920,7 +1104,13 @@ function SharperHint({ improvement }: { improvement: string }) {
 /** Questions empty state — a launchpad: copy-setup-prompt is the first action.
  *  Egg 8: when connected, the "ask the void" line rotates daily (dev-humor, still
  *  helpful). Egg 6: an HTTP 418 + "42" nod hides in the icon's title attribute. */
-function QuestionsEmpty({ connected, onCopySetupPrompt }: { connected: boolean; onCopySetupPrompt: () => void }) {
+function QuestionsEmpty({
+  connected,
+  onCopySetupPrompt,
+}: {
+  connected: boolean;
+  onCopySetupPrompt: () => void;
+}) {
   // Deterministic daily rotation so the line is stable within a session.
   const dayIndex = Math.floor(Date.now() / 86_400_000) % VOID_LINES.length;
   return (
@@ -964,10 +1154,16 @@ function DecisionsTab({ store }: { store: RoomStore }) {
   const decided = store.questions
     .map((q) => ({
       q,
-      a: [...store.answers].filter((a) => a.questionId === q.id).sort((x, y) => y.revision - x.revision)[0],
-      receipts: (receiptsByQuestion.get(q.id) ?? []).sort((x, y) => y.createdAt.localeCompare(x.createdAt)),
+      a: [...store.answers]
+        .filter((a) => a.questionId === q.id)
+        .sort((x, y) => y.revision - x.revision)[0],
+      receipts: (receiptsByQuestion.get(q.id) ?? []).sort((x, y) =>
+        y.createdAt.localeCompare(x.createdAt),
+      ),
     }))
-    .filter((x): x is { q: Question; a: AnswerRevision; receipts: ApplicationReceipt[] } => Boolean(x.a));
+    .filter((x): x is { q: Question; a: AnswerRevision; receipts: ApplicationReceipt[] } =>
+      Boolean(x.a),
+    );
 
   if (decided.length === 0) {
     return (
@@ -977,8 +1173,8 @@ function DecisionsTab({ store }: { store: RoomStore }) {
           No decisions yet
         </Heading>
         <Muted className="max-w-md text-center">
-          Answers you submit — and what your agent applies, verifies, or couldn't apply — are summarized here with the
-          files it touched.
+          Answers you submit — and what your agent applies, verifies, or couldn't apply — are
+          summarized here with the files it touched.
         </Muted>
       </Card>
     );
@@ -1007,7 +1203,9 @@ function DecisionsTab({ store }: { store: RoomStore }) {
               <div className="mt-1 flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-white/55">
                   <Receipt size={14} className="text-[color:var(--ask-accent)]" />
-                  <span className="font-medium text-white/75">Agent {receiptVerb(latestReceipt.state)}</span>
+                  <span className="font-medium text-white/75">
+                    Agent {receiptVerb(latestReceipt.state)}
+                  </span>
                   {latestReceipt.commitRef ? (
                     <>
                       <span>·</span>
@@ -1024,7 +1222,9 @@ function DecisionsTab({ store }: { store: RoomStore }) {
                       <Mono key={p}>{p}</Mono>
                     ))}
                     {latestReceipt.affectedPaths.length > 6 ? (
-                      <span className="text-xs text-white/55">+{latestReceipt.affectedPaths.length - 6} more</span>
+                      <span className="text-xs text-white/55">
+                        +{latestReceipt.affectedPaths.length - 6} more
+                      </span>
                     ) : null}
                   </div>
                 ) : null}
@@ -1046,30 +1246,31 @@ function DecisionsTab({ store }: { store: RoomStore }) {
 /** Activity tab — a live, readable feed of questions, answers, receipts + check-ins. */
 function ActivityTab({ store }: { store: RoomStore }) {
   const items = useMemo(() => {
-    const rows: { ts: string; text: string; kind: 'question' | 'answer' | 'receipt' | 'agent' }[] = [
-      ...store.questions.map((q) => ({
-        ts: q.createdAt,
-        kind: 'question' as const,
-        text: `New question — "${q.title}"`,
-      })),
-      ...store.answers.map((a) => ({
-        ts: a.createdAt,
-        kind: 'answer' as const,
-        text: `Answer ${answerStatusChip(a.status).label.toLowerCase()}`,
-      })),
-      ...store.receipts.map((r) => ({
-        ts: r.createdAt,
-        kind: 'receipt' as const,
-        text: `Agent ${receiptVerb(r.state)}${r.commitRef ? ` (${r.commitRef})` : ''}${
-          r.affectedPaths.length ? ` — ${r.affectedPaths.slice(0, 3).join(', ')}` : ''
-        }`,
-      })),
-      ...store.agents.map((ag) => ({
-        ts: ag.lastSeenAt ?? '',
-        kind: 'agent' as const,
-        text: `${ag.agent} ${ag.status}${ag.task ? ` · ${ag.task}` : ''}`,
-      })),
-    ];
+    const rows: { ts: string; text: string; kind: 'question' | 'answer' | 'receipt' | 'agent' }[] =
+      [
+        ...store.questions.map((q) => ({
+          ts: q.createdAt,
+          kind: 'question' as const,
+          text: `New question — "${q.title}"`,
+        })),
+        ...store.answers.map((a) => ({
+          ts: a.createdAt,
+          kind: 'answer' as const,
+          text: `Answer ${answerStatusChip(a.status).label.toLowerCase()}`,
+        })),
+        ...store.receipts.map((r) => ({
+          ts: r.createdAt,
+          kind: 'receipt' as const,
+          text: `Agent ${receiptVerb(r.state)}${r.commitRef ? ` (${r.commitRef})` : ''}${
+            r.affectedPaths.length ? ` — ${r.affectedPaths.slice(0, 3).join(', ')}` : ''
+          }`,
+        })),
+        ...store.agents.map((ag) => ({
+          ts: ag.lastSeenAt ?? '',
+          kind: 'agent' as const,
+          text: `${ag.agent} ${ag.status}${ag.task ? ` · ${ag.task}` : ''}`,
+        })),
+      ];
     return rows.filter((x) => x.ts).sort((a, b) => b.ts.localeCompare(a.ts));
   }, [store]);
 
@@ -1098,7 +1299,11 @@ function ActivityTab({ store }: { store: RoomStore }) {
     <ol className="relative flex flex-col gap-2 border-l border-white/10 pl-4" aria-live="polite">
       {items.map((it, i) => (
         <li key={i} className="ask-enter relative flex items-baseline gap-3 py-1">
-          <span className={['absolute -left-[21px] top-2.5 h-2 w-2 rounded-full', dot[it.kind]].join(' ')} />
+          <span
+            className={['absolute -left-[21px] top-2.5 h-2 w-2 rounded-full', dot[it.kind]].join(
+              ' ',
+            )}
+          />
           <time className="ask-mono shrink-0 text-xs text-white/55" title={it.ts}>
             {clockTime(it.ts)}
           </time>
@@ -1121,7 +1326,11 @@ function ClaimView({ slug, onToast }: { slug: string; onToast: (t: ToastInput) =
     try {
       const res = await createRoom(slug);
       window.history.replaceState({}, '', `/${res.room.slug}`);
-      onToast({ title: 'Page claimed', description: `ask/${res.room.slug} is yours.`, variant: 'success' });
+      onToast({
+        title: 'Page claimed',
+        description: `ask/${res.room.slug} is yours.`,
+        variant: 'success',
+      });
       window.location.reload();
     } catch (e: unknown) {
       setError(e instanceof ApiError ? e.code : (e as Error).message);
@@ -1131,7 +1340,10 @@ function ClaimView({ slug, onToast }: { slug: string; onToast: (t: ToastInput) =
 
   return (
     <div className="ask-shell flex min-h-dvh items-center justify-center p-6">
-      <Card className="ask-aurora relative flex w-full max-w-md flex-col items-center gap-4 overflow-hidden p-8 text-center" glow>
+      <Card
+        className="ask-aurora relative flex w-full max-w-md flex-col items-center gap-4 overflow-hidden p-8 text-center"
+        glow
+      >
         <Eyebrow>Available</Eyebrow>
         <Heading level={1} className="ask-h1">
           This page is free
@@ -1154,7 +1366,9 @@ function ClaimView({ slug, onToast }: { slug: string; onToast: (t: ToastInput) =
           data-testid="claim-button"
           onClick={() => void claim()}
         >
-          <span className="min-w-[10ch] text-center">{claiming ? 'Claiming…' : 'Claim this page'}</span>
+          <span className="min-w-[10ch] text-center">
+            {claiming ? 'Claiming…' : 'Claim this page'}
+          </span>
         </Button>
       </Card>
     </div>

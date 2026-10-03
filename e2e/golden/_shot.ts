@@ -12,5 +12,8 @@ const E2E_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Capture a full-page screenshot to e2e/screenshots/<name>/<step>.png. */
 export function shot(page: Page, name: string, step: string): Promise<Buffer> {
-  return page.screenshot({ path: resolve(E2E_DIR, 'screenshots', name, `${step}.png`), fullPage: true });
+  return page.screenshot({
+    path: resolve(E2E_DIR, 'screenshots', name, `${step}.png`),
+    fullPage: true,
+  });
 }

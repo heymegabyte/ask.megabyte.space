@@ -6,16 +6,16 @@ in per-room Durable Objects; D1 is a thin registry. See `protocol.md` for the wi
 
 ## Component table
 
-| Component | Technology | Responsibility |
-|---|---|---|
-| SPA | React 19 + Vite + Tailwind v4 + Cloudflare Kumo | Room UI: ask/answer, live updates, owner settings. Built into Static Assets. |
-| Worker | Cloudflare Workers + Hono | Routing, request-id + `noindex` + `no-store` middleware, REST under `/api/v1`, WS upgrade forwarding, billing + MCP boundaries, SPA fallback. |
+| Component      | Technology                                         | Responsibility                                                                                                                                                        |
+| -------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SPA            | React 19 + Vite + Tailwind v4 + Cloudflare Kumo    | Room UI: ask/answer, live updates, owner settings. Built into Static Assets.                                                                                          |
+| Worker         | Cloudflare Workers + Hono                          | Routing, request-id + `noindex` + `no-store` middleware, REST under `/api/v1`, WS upgrade forwarding, billing + MCP boundaries, SPA fallback.                         |
 | Room authority | SQLite-backed Durable Object (`RoomDurableObject`) | One per room. Authoritative for Q&A, append-only answer revisions, receipts, enrolled agents, visibility epoch, the monotonic event log, and hibernatable WebSockets. |
-| Registry | D1 (`ask-registry`) | Unique slug→room mapping, immutable room-id index, billing inbox + per-room billing state. Never duplicates Q&A. |
-| Contracts | `packages/contracts` (Zod) | Single source of truth for entities, requests/responses, events, routes, limits. All sides infer types from it. |
-| Agent kit | `packages/agent-integration` (PLANNED) | Typed HTTP helper + host adapters + project-skill files. Scaffold only today. |
-| Static Assets | CF Workers Static Assets | Serves the SPA; `single-page-application` fallback for unmatched non-API paths. |
-| Reserved | R2 · Queues · Workflows · Workers AI | Not bound yet; Increment 5 enrichment. |
+| Registry       | D1 (`ask-registry`)                                | Unique slug→room mapping, immutable room-id index, billing inbox + per-room billing state. Never duplicates Q&A.                                                      |
+| Contracts      | `packages/contracts` (Zod)                         | Single source of truth for entities, requests/responses, events, routes, limits. All sides infer types from it.                                                       |
+| Agent kit      | `packages/agent-integration` (PLANNED)             | Typed HTTP helper + host adapters + project-skill files. Scaffold only today.                                                                                         |
+| Static Assets  | CF Workers Static Assets                           | Serves the SPA; `single-page-application` fallback for unmatched non-API paths.                                                                                       |
+| Reserved       | R2 · Queues · Workflows · Workers AI               | Not bound yet; Increment 5 enrichment.                                                                                                                                |
 
 ## Bindings (`apps/ask/wrangler.jsonc`)
 

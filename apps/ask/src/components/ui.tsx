@@ -92,7 +92,11 @@ export function Muted({
   className?: string;
   as?: 'p' | 'span' | 'div';
 }) {
-  return <As className={['text-[0.9rem] leading-relaxed text-white/70', className].join(' ')}>{children}</As>;
+  return (
+    <As className={['text-[0.9rem] leading-relaxed text-white/70', className].join(' ')}>
+      {children}
+    </As>
+  );
 }
 
 /** Inline mono chip for slug / id / code fragments. */

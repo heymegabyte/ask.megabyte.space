@@ -29,7 +29,6 @@ function collectConsoleErrors(page: Page): string[] {
   return errors;
 }
 
-
 test.describe('golden path', () => {
   test('entry at / auto-creates a room, adopts /<slug>, shows copy-setup-prompt, 0 console errors', async ({
     page,
@@ -53,14 +52,18 @@ test.describe('golden path', () => {
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
 
-  test('a seeded single-choice question renders as a card → pick option + submit → Saved', async ({ page }) => {
+  test('a seeded single-choice question renders as a card → pick option + submit → Saved', async ({
+    page,
+  }) => {
     const room = await seedOwnedRoom(page, BASE);
     await page.goto(`/${room.slug}`);
 
     const card = page.getByTestId('question-card').first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     // Scope to the heading (the title also appears as an sr-only radiogroup legend).
-    await expect(card.getByRole('heading', { name: 'Which database should the MVP use?' })).toBeVisible();
+    await expect(
+      card.getByRole('heading', { name: 'Which database should the MVP use?' }),
+    ).toBeVisible();
     await shot(page, 'answer-submit', '1-question-card');
 
     // Pick the recommended option (D1), then submit.

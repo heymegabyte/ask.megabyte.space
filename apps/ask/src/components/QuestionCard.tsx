@@ -75,7 +75,11 @@ function ImageComparison({
 }) {
   const selected = draft.selected[0] ?? '';
   return (
-    <div role="radiogroup" aria-label={question.title} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <div
+      role="radiogroup"
+      aria-label={question.title}
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+    >
       {question.options.map((opt) => {
         const isSel = selected === opt.id;
         return (
@@ -107,7 +111,13 @@ function ImageComparison({
             )}
             <span className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-white/85">
               <span className="truncate">{opt.label}</span>
-              {isSel ? <CheckCircle size={16} weight="fill" className="shrink-0 text-[color:var(--ask-accent)]" /> : null}
+              {isSel ? (
+                <CheckCircle
+                  size={16}
+                  weight="fill"
+                  className="shrink-0 text-[color:var(--ask-accent)]"
+                />
+              ) : null}
             </span>
           </button>
         );
@@ -137,7 +147,12 @@ function QuestionKindControl({
         >
           <Radio.Legend className="sr-only">{question.title}</Radio.Legend>
           {question.options.map((opt) => (
-            <Radio.Item key={opt.id} value={opt.id} label={opt.label} description={opt.description} />
+            <Radio.Item
+              key={opt.id}
+              value={opt.id}
+              label={opt.label}
+              description={opt.description}
+            />
           ))}
         </Radio.Group>
       );
@@ -195,7 +210,9 @@ function QuestionKindControl({
           type="number"
           inputMode="decimal"
           placeholder={
-            question.numberConstraint?.unit ? `Value in ${question.numberConstraint.unit}` : 'Enter a number'
+            question.numberConstraint?.unit
+              ? `Value in ${question.numberConstraint.unit}`
+              : 'Enter a number'
           }
           min={question.numberConstraint?.min}
           max={question.numberConstraint?.max}
@@ -312,7 +329,9 @@ export function QuestionCard({
   autoFocus,
 }: Props) {
   const controlId = useId();
-  const [explainState, setExplainState] = useState<'idle' | 'asking' | 'requested' | 'sent'>('idle');
+  const [explainState, setExplainState] = useState<'idle' | 'asking' | 'requested' | 'sent'>(
+    'idle',
+  );
   const [editing, setEditing] = useState(false);
   const value = draftToValue(question, draft);
   const freeText = draft.text.trim() || undefined;
@@ -401,16 +420,27 @@ export function QuestionCard({
             data-testid="answered-view"
             className="flex items-start gap-2.5 rounded-xl border border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-3.5 py-3"
           >
-            <CheckCircle size={18} weight="fill" className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]" />
+            <CheckCircle
+              size={18}
+              weight="fill"
+              className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]"
+            />
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[0.72rem] font-semibold uppercase tracking-wider text-[color:var(--ask-accent)]">
                 Your answer
               </span>
-              <span className="text-[0.95rem] text-white/90">{answeredValueText(question, answer!)}</span>
+              <span className="text-[0.95rem] text-white/90">
+                {answeredValueText(question, answer!)}
+              </span>
             </div>
           </div>
           <footer className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" icon={PencilLine} data-testid="answer-edit" onClick={() => setEditing(true)}>
+            <Button
+              variant="ghost"
+              icon={PencilLine}
+              data-testid="answer-edit"
+              onClick={() => setEditing(true)}
+            >
               Change answer
             </Button>
             <Button
@@ -421,7 +451,11 @@ export function QuestionCard({
               data-testid="answer-explain"
               onClick={() => void explain()}
             >
-              {explainState === 'sent' ? 'Asked ✓' : explainState === 'requested' ? 'Requested' : 'Explain more'}
+              {explainState === 'sent'
+                ? 'Asked ✓'
+                : explainState === 'requested'
+                  ? 'Requested'
+                  : 'Explain more'}
             </Button>
           </footer>
           {explainState === 'requested' ? (
@@ -432,91 +466,97 @@ export function QuestionCard({
         </div>
       ) : (
         <>
-      {/* Line 4 — the recommendation, labeled as a suggestion, explicitly NOT pre-selected. */}
-      {question.recommendation ? (
-        <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-3.5 py-2.5">
-          <Sparkle size={16} weight="fill" className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]" />
-          <p className="text-[0.9rem] leading-relaxed text-white/80">
-            <span className="font-semibold text-[color:var(--ask-accent)]">Suggested: </span>
-            {question.recommendation}
-            <span className="text-white/60"> — a hint, not selected for you.</span>
-          </p>
-        </div>
-      ) : null}
+          {/* Line 4 — the recommendation, labeled as a suggestion, explicitly NOT pre-selected. */}
+          {question.recommendation ? (
+            <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-3.5 py-2.5">
+              <Sparkle
+                size={16}
+                weight="fill"
+                className="mt-0.5 shrink-0 text-[color:var(--ask-accent)]"
+              />
+              <p className="text-[0.9rem] leading-relaxed text-white/80">
+                <span className="font-semibold text-[color:var(--ask-accent)]">Suggested: </span>
+                {question.recommendation}
+                <span className="text-white/60"> — a hint, not selected for you.</span>
+              </p>
+            </div>
+          ) : null}
 
-      {/* Kind-appropriate input. */}
-      <div {...(autoFocus ? { 'data-autofocus': 'true' } : {})}>
-        <QuestionKindControl
-          question={question}
-          draft={draft}
-          onDraftChange={onDraftChange}
-          controlId={controlId}
-        />
-      </div>
+          {/* Kind-appropriate input. */}
+          <div {...(autoFocus ? { 'data-autofocus': 'true' } : {})}>
+            <QuestionKindControl
+              question={question}
+              draft={draft}
+              onDraftChange={onDraftChange}
+              controlId={controlId}
+            />
+          </div>
 
-      {/* A free-text note is always available alongside the structured input. */}
-      {!kindIsFreeText(question.kind) ? (
-        <InputArea
-          aria-label={`Add a note for: ${question.title}`}
-          placeholder="Add a note (optional)"
-          autoResize
-          minRows={1}
-          maxRows={6}
-          value={draft.text}
-          onValueChange={(v) => onDraftChange({ ...draft, text: v })}
-        />
-      ) : null}
+          {/* A free-text note is always available alongside the structured input. */}
+          {!kindIsFreeText(question.kind) ? (
+            <InputArea
+              aria-label={`Add a note for: ${question.title}`}
+              placeholder="Add a note (optional)"
+              autoResize
+              minRows={1}
+              maxRows={6}
+              value={draft.text}
+              onValueChange={(v) => onDraftChange({ ...draft, text: v })}
+            />
+          ) : null}
 
-      <footer className="flex flex-wrap items-center gap-2 pt-1">
-        <Button
-          variant="primary"
-          icon={PaperPlaneTilt}
-          loading={sending}
-          disabled={sending || !hasInput}
-          data-testid="answer-submit"
-          onClick={() => onSubmit(value, freeText)}
-        >
-          <span className="min-w-[6.5ch] text-center">{sending ? 'Saving…' : 'Submit answer'}</span>
-        </Button>
-        <Tooltip
-          content="The agent chooses within the constraints you've stated."
-          render={
+          <footer className="flex flex-wrap items-center gap-2 pt-1">
+            <Button
+              variant="primary"
+              icon={PaperPlaneTilt}
+              loading={sending}
+              disabled={sending || !hasInput}
+              data-testid="answer-submit"
+              onClick={() => onSubmit(value, freeText)}
+            >
+              <span className="min-w-[6.5ch] text-center">
+                {sending ? 'Saving…' : 'Submit answer'}
+              </span>
+            </Button>
+            <Tooltip
+              content="The agent chooses within the constraints you've stated."
+              render={
+                <Button
+                  variant="ghost"
+                  icon={Sparkle}
+                  disabled={sending}
+                  aria-label="Let the agent decide"
+                  data-testid="answer-delegate"
+                  onClick={() => onSubmit({ kind: 'delegate' }, freeText)}
+                />
+              }
+            >
+              Let the agent decide
+            </Tooltip>
             <Button
               variant="ghost"
-              icon={Sparkle}
+              icon={HandPalm}
               disabled={sending}
-              aria-label="Let the agent decide"
-              data-testid="answer-delegate"
-              onClick={() => onSubmit({ kind: 'delegate' }, freeText)}
-            />
-          }
-        >
-          Let the agent decide
-        </Tooltip>
-        <Button
-          variant="ghost"
-          icon={HandPalm}
-          disabled={sending}
-          data-testid="answer-skip"
-          onClick={() => onSubmit({ kind: 'skip' }, freeText)}
-        >
-          Skip for now
-        </Button>
-        <Button
-          variant="ghost"
-          icon={ChatCircleDots}
-          loading={explainState === 'asking'}
-          disabled={explainState === 'asking'}
-          data-testid="answer-explain"
-          onClick={() => void explain()}
-        >
-          {explainState === 'sent'
-            ? 'Asked ✓'
-            : explainState === 'requested'
-              ? 'Requested'
-              : 'Explain more'}
-        </Button>
-      </footer>
+              data-testid="answer-skip"
+              onClick={() => onSubmit({ kind: 'skip' }, freeText)}
+            >
+              Skip for now
+            </Button>
+            <Button
+              variant="ghost"
+              icon={ChatCircleDots}
+              loading={explainState === 'asking'}
+              disabled={explainState === 'asking'}
+              data-testid="answer-explain"
+              onClick={() => void explain()}
+            >
+              {explainState === 'sent'
+                ? 'Asked ✓'
+                : explainState === 'requested'
+                  ? 'Requested'
+                  : 'Explain more'}
+            </Button>
+          </footer>
 
           {/* Honest note when Explain-more isn't wired yet (501). */}
           {explainState === 'requested' ? (

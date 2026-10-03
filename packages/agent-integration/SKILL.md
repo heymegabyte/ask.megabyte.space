@@ -136,6 +136,7 @@ ask nothing, just do it. Match the volume to the decision density.)
    stdin). The helper validates every field against the contract, drops any
    already-present `dedupKey`, and prints how many were created vs deduped. A batch
    caps at 25 — split a larger decomposition into a second `ask` call.
+
 6. **Then continue the normal cycle.** Keep doing reversible work while the
    questions sit open; sync to pick up answers as the humans respond. As the build
    progresses and NEW decision points surface (a new subsystem, an integration, a

@@ -276,6 +276,17 @@ export const Participant = z.object({
 });
 export type Participant = z.infer<typeof Participant>;
 
+/**
+ * A git repository identity, normalized to lowercase `owner/name`
+ * (e.g. "heymegabyte/projectsites.dev"). Lets questions be grouped by project
+ * and gives each project a stable `/{owner}/{repo}` URL (§28-ext).
+ */
+export const RepoSlug = z
+  .string()
+  .regex(/^[a-z0-9._-]+\/[a-z0-9._-]+$/, 'repo must be lowercase owner/name')
+  .max(140);
+export type RepoSlug = z.infer<typeof RepoSlug>;
+
 export const AgentInstallation = z.object({
   id: InstallId,
   /** Self-reported agent product (e.g. "Claude Code"); not authoritative (§5). */
@@ -285,6 +296,10 @@ export const AgentInstallation = z.object({
   /** Optional branch/task the agent reports it is working on (§5). */
   branch: z.string().max(200).optional(),
   task: z.string().max(200).optional(),
+  /** Normalized `owner/name` of the git repo this agent works in (§28-ext). */
+  repo: RepoSlug.optional(),
+  /** The repo's remote URL, if the agent reported it (display only). */
+  repoUrl: z.string().max(400).optional(),
   status: z.enum(['working', 'waiting', 'offline']),
   features: z.array(z.string().max(40)).max(40).default([]),
   lastSeenAt: Iso.optional(),
@@ -311,6 +326,8 @@ export const Question = z.object({
   /** Whether work can continue without an answer (§5). */
   blocksWork: z.boolean().default(false),
   relevantTask: z.string().max(200).optional(),
+  /** Source git repo (owner/name), stamped server-side from the posting agent (§28-ext). */
+  repo: RepoSlug.optional(),
   state: QuestionState.default('open'),
   revision: z.number().int().nonnegative(),
   createdByInstall: InstallId.optional(),
@@ -471,6 +488,41 @@ export const RoomSnapshot = z.object({
 });
 export type RoomSnapshot = z.infer<typeof RoomSnapshot>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-project (git repo) addressing + personal dashboard (§28-ext)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Resolve an owner/repo path (`/{owner}/{repo}`) to its canonical room. */
+export const ResolveRepoResponse = z.object({
+  roomId: RoomId,
+  slug: Slug,
+  repo: RepoSlug,
+  /** The canonical URL the client should adopt (the memorable word-slug). */
+  url: z.string(),
+});
+export type ResolveRepoResponse = z.infer<typeof ResolveRepoResponse>;
+
+/** One room in the viewer's personal dashboard — a room they own + its AI read. */
+export const MeRoom = z.object({
+  room: Room,
+  url: z.string(),
+  questionCount: z.number().int().nonnegative(),
+  openCount: z.number().int().nonnegative(),
+  answeredCount: z.number().int().nonnegative(),
+  /** Git repos that have published to this room (grouping + per-project URLs). */
+  repos: z.array(RepoSlug).default([]),
+  /** AI read of the project (§6) — the "what this is about" summary. */
+  understanding: ProjectUnderstanding.optional(),
+  lastActivityAt: Iso.optional(),
+});
+export type MeRoom = z.infer<typeof MeRoom>;
+
+/** The viewer's own rooms — powers the apex dashboard (private to this browser's principal). */
+export const MeRoomsResponse = z.object({
+  rooms: z.array(MeRoom),
+});
+export type MeRoomsResponse = z.infer<typeof MeRoomsResponse>;
+
 export const ChangesResponse = z.object({
   events: z.array(RoomEvent),
   cursor: Cursor,
@@ -485,6 +537,9 @@ export const EnrollAgentRequest = z.object({
   features: z.array(z.string().max(40)).max(40).default([]),
   branch: z.string().max(200).optional(),
   task: z.string().max(200).optional(),
+  /** Normalized `owner/name` git repo — registers the project's `/{owner}/{repo}` URL (§28-ext). */
+  repo: RepoSlug.optional(),
+  repoUrl: z.string().max(400).optional(),
 });
 export type EnrollAgentRequest = z.infer<typeof EnrollAgentRequest>;
 
@@ -501,6 +556,8 @@ export const QuestionInput = Question.omit({
   revision: true,
   state: true,
   createdByInstall: true,
+  // `repo` is stamped server-side from the posting agent's install, never client-set.
+  repo: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
@@ -620,8 +677,7 @@ export const ROUTES = {
   changes: (id: string) => `/api/${API_VERSION}/rooms/${id}/changes`,
   agents: (id: string) => `/api/${API_VERSION}/rooms/${id}/agents`,
   questions: (id: string) => `/api/${API_VERSION}/rooms/${id}/questions:batch`,
-  answers: (id: string, qid: string) =>
-    `/api/${API_VERSION}/rooms/${id}/questions/${qid}/answers`,
+  answers: (id: string, qid: string) => `/api/${API_VERSION}/rooms/${id}/questions/${qid}/answers`,
   receipts: (id: string) => `/api/${API_VERSION}/rooms/${id}/receipts`,
   contextRequests: (id: string) => `/api/${API_VERSION}/rooms/${id}/context-requests`,
   settings: (id: string) => `/api/${API_VERSION}/rooms/${id}/settings`,
@@ -629,6 +685,8 @@ export const ROUTES = {
   checkout: (id: string) => `/api/${API_VERSION}/rooms/${id}/checkout`,
   enrich: (id: string) => `/api/${API_VERSION}/rooms/${id}/enrich`,
   events: (id: string) => `/api/${API_VERSION}/rooms/${id}/events`,
+  meRooms: `/api/${API_VERSION}/me/rooms`,
+  resolveRepo: (owner: string, repo: string) => `/api/${API_VERSION}/repos/${owner}/${repo}`,
   stripeWebhook: '/api/billing/stripe/webhook',
   manifest: '/integrations/manifest.json',
   health: '/api/health',

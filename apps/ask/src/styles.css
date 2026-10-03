@@ -51,7 +51,15 @@ body {
   margin: 0;
   background: var(--ask-black);
   color: var(--text-color-kumo-default, #e8e8ea);
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

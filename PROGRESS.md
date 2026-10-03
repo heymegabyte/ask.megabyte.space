@@ -5,6 +5,7 @@ Mandate: recursively inspect + improve until gorgeous + fully functional; golden
 ## Improvement inventory (closed / total)
 
 ### Visual (gorgeous-by-default)
+
 - [ ] Kumo Empty/cards re-themed dark (no white card on near-black)
 - [ ] Headings WCAG AA contrast on dark (≥4.5:1)
 - [ ] Brand: #060610 + #00E5FF, Space Grotesk/Sora + JetBrains Mono for ids/slugs
@@ -13,6 +14,7 @@ Mandate: recursively inspect + improve until gorgeous + fully functional; golden
 - [ ] Every state styled: empty, loading, error, connected, answering, disconnected, conflict, private
 
 ### Functional (every feature works)
+
 - [ ] All 7 question kinds render + answerable (single/multiple/short/long/number/range/link/image_comparison)
 - [ ] 5 explainer lines per card (question/why-now/what-changes/recommendation/continues-without)
 - [ ] Skip / Let-the-agent-decide / Explain-more
@@ -25,12 +27,14 @@ Mandate: recursively inspect + improve until gorgeous + fully functional; golden
 - [ ] First-run publishes ~10 high-value questions on a new repo (SKILL.md + helper `ask`)
 
 ### Verification
+
 - [ ] Golden-path Playwright suite (every feature) green against prod
 - [ ] Vitest DO/worker tests green
 - [ ] Dogfood: setup prompt in a fresh agent/repo → ~10 questions appear in app
 - [ ] Deployed + prod-smoke green
 
 ## Cycle log
+
 - Round 1: built gorgeous dark Kumo UI (root-caused white-card: Kumo needs data-mode="dark") + first-run 10-question briefing. Deployed.
 - Visual pass (me): cobalt-ledger 10 cards, 0 white panels, 0 console, axe 0.
 - Round 2: progressive-disclosure queue, AA contrast >=6.2:1, accent-ring Now cards, motion. Deployed.

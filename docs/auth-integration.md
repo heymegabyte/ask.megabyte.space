@@ -54,11 +54,11 @@ every doc lists shared-auth as ADAPTER+CONTRACT-TESTS-ONLY, never LIVE.
 
 ## What each layer can do
 
-| Action | Anonymous owner | Agent token | Shared-auth owner (planned) |
-|---|---|---|---|
-| Answer a public room | yes (any visitor) | n/a | yes |
-| Publish questions | — | yes (stamped) | — |
-| Post receipts | — | yes (required) | — |
-| Rename room | yes (owner) | no | yes (owner) |
-| Make room private / checkout | — (Increment 3) | no | yes (owner) |
-| Read a private room | owner only | no | entitled owner only |
+| Action                       | Anonymous owner   | Agent token    | Shared-auth owner (planned) |
+| ---------------------------- | ----------------- | -------------- | --------------------------- |
+| Answer a public room         | yes (any visitor) | n/a            | yes                         |
+| Publish questions            | —                 | yes (stamped)  | —                           |
+| Post receipts                | —                 | yes (required) | —                           |
+| Rename room                  | yes (owner)       | no             | yes (owner)                 |
+| Make room private / checkout | — (Increment 3)   | no             | yes (owner)                 |
+| Read a private room          | owner only        | no             | entitled owner only         |

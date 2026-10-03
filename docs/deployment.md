@@ -28,7 +28,7 @@ Root scripts: `pnpm typecheck` (all packages), `pnpm test` (Vitest), `pnpm test:
   Worker-owned path prefix here in the same change (see the gotcha in `architecture.md`), or the
   asset layer will shadow it for browser navigations.
 - `durable_objects.bindings`: `ROOM → RoomDurableObject`; `migrations: [{ tag: "v1",
-  new_sqlite_classes: ["RoomDurableObject"] }]`.
+new_sqlite_classes: ["RoomDurableObject"] }]`.
 - `d1_databases`: `DB → ask-registry` with `migrations_dir: migrations`.
 - `observability.enabled: true`.
 - `vars`: `SERVICE_ORIGIN` (must match the deployed URL), `SHARED_AUTH_ISSUER`,

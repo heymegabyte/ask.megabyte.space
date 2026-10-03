@@ -8,7 +8,10 @@
  *
  * Usage: ASK_BASE=https://<host> node scripts/verify-prod.mjs
  */
-const BASE = (process.env.ASK_BASE || 'https://ask-megabyte-space.manhattan.workers.dev').replace(/\/$/, '');
+const BASE = (process.env.ASK_BASE || 'https://ask-megabyte-space.manhattan.workers.dev').replace(
+  /\/$/,
+  '',
+);
 const WS_BASE = BASE.replace(/^http/, 'ws');
 
 let pass = 0;
@@ -50,8 +53,14 @@ async function main() {
   const cr = await fetch(`${BASE}/api/v1/rooms`, { method: 'POST', headers: J(), body: '{}' });
   const crj = await cr.json();
   const ownerCookie = setCookie(cr);
-  ok([200, 201].includes(cr.status) && crj.room?.id?.startsWith('rm_') && crj.owned === true, `create room → ${crj.room?.slug}`);
-  ok(/^[a-z]+(?:-[a-z0-9]+)+$/.test(crj.room?.slug || ''), `slug looks intentional: ${crj.room?.slug}`);
+  ok(
+    [200, 201].includes(cr.status) && crj.room?.id?.startsWith('rm_') && crj.owned === true,
+    `create room → ${crj.room?.slug}`,
+  );
+  ok(
+    /^[a-z]+(?:-[a-z0-9]+)+$/.test(crj.room?.slug || ''),
+    `slug looks intentional: ${crj.room?.slug}`,
+  );
   ok(!!ownerCookie, 'owner Set-Cookie issued (HttpOnly session)');
   const id = crj.room.id;
   const slug = crj.room.slug;
@@ -59,14 +68,27 @@ async function main() {
   // 4. second browser resolves by slug → guest
   const snap2 = await fetch(`${BASE}/api/v1/rooms/${slug}`);
   const snap2j = await snap2.json();
-  ok(snap2.status === 200 && snap2j.room?.id === id && snap2j.viewerRole === 'guest', 'second browser resolves slug → guest role');
-  ok((snap2.headers.get('x-robots-tag') || '').includes('noindex'), 'API carries X-Robots-Tag noindex');
+  ok(
+    snap2.status === 200 && snap2j.room?.id === id && snap2j.viewerRole === 'guest',
+    'second browser resolves slug → guest role',
+  );
+  ok(
+    (snap2.headers.get('x-robots-tag') || '').includes('noindex'),
+    'API carries X-Robots-Tag noindex',
+  );
   ok((snap2.headers.get('cache-control') || '').includes('no-store'), 'API Cache-Control no-store');
 
   // 5. enroll agent → scoped token
-  const en = await fetch(`${BASE}/api/v1/rooms/${id}/agents`, { method: 'POST', headers: J(), body: JSON.stringify({ agent: 'Claude Code', version: 'verify', features: ['hooks'] }) });
+  const en = await fetch(`${BASE}/api/v1/rooms/${id}/agents`, {
+    method: 'POST',
+    headers: J(),
+    body: JSON.stringify({ agent: 'Claude Code', version: 'verify', features: ['hooks'] }),
+  });
   const enj = await en.json();
-  ok([200, 201].includes(en.status) && enj.install?.id?.startsWith('ai_') && !!enj.token, 'agent enrolled + scoped token');
+  ok(
+    [200, 201].includes(en.status) && enj.install?.id?.startsWith('ai_') && !!enj.token,
+    'agent enrolled + scoped token',
+  );
   const bearer = `Bearer ${enj.install.id}.${enj.token}`;
 
   // 6. open TWO WS viewers BEFORE the writes (live propagation test)
@@ -90,7 +112,10 @@ async function main() {
     ),
   );
   await new Promise((res) => setTimeout(res, 600));
-  ok(received.every((arr) => arr.some((m) => m.type === 'hello')), 'both WS viewers got hello + cursor');
+  ok(
+    received.every((arr) => arr.some((m) => m.type === 'hello')),
+    'both WS viewers got hello + cursor',
+  );
 
   // 7. publish a real question (as the agent)
   const qBody = {
@@ -113,59 +138,122 @@ async function main() {
       },
     ],
   };
-  const pq = await fetch(`${BASE}/api/v1/rooms/${id}/questions:batch`, { method: 'POST', headers: J({ authorization: bearer }), body: JSON.stringify(qBody) });
+  const pq = await fetch(`${BASE}/api/v1/rooms/${id}/questions:batch`, {
+    method: 'POST',
+    headers: J({ authorization: bearer }),
+    body: JSON.stringify(qBody),
+  });
   const pqj = await pq.json();
-  ok([200, 201].includes(pq.status) && pqj.created === 1 && pqj.questions?.[0]?.id?.startsWith('q_'), 'question published (created=1)');
+  ok(
+    [200, 201].includes(pq.status) && pqj.created === 1 && pqj.questions?.[0]?.id?.startsWith('q_'),
+    'question published (created=1)',
+  );
   const qid = pqj.questions[0].id;
 
   // 8. dedup — same dedupKey must not duplicate
-  const pqDup = await fetch(`${BASE}/api/v1/rooms/${id}/questions:batch`, { method: 'POST', headers: J({ authorization: bearer }), body: JSON.stringify(qBody) });
+  const pqDup = await fetch(`${BASE}/api/v1/rooms/${id}/questions:batch`, {
+    method: 'POST',
+    headers: J({ authorization: bearer }),
+    body: JSON.stringify(qBody),
+  });
   const pqDupj = await pqDup.json();
   ok(pqDupj.deduped === 1 && pqDupj.created === 0, 'dedup: identical dedupKey not re-created');
 
   // 9. public answer (no account, second browser)
-  const an = await fetch(`${BASE}/api/v1/rooms/${id}/questions/${qid}/answers`, { method: 'POST', headers: J(), body: JSON.stringify({ value: { kind: 'choice', selected: ['d1'] }, text: 'D1 for the MVP.' }) });
+  const an = await fetch(`${BASE}/api/v1/rooms/${id}/questions/${qid}/answers`, {
+    method: 'POST',
+    headers: J(),
+    body: JSON.stringify({ value: { kind: 'choice', selected: ['d1'] }, text: 'D1 for the MVP.' }),
+  });
   const anj = await an.json();
-  ok([200, 201].includes(an.status) && anj.answer?.id?.startsWith('a_') && anj.answer.status === 'answer_saved', 'public answer saved (no login)');
+  ok(
+    [200, 201].includes(an.status) &&
+      anj.answer?.id?.startsWith('a_') &&
+      anj.answer.status === 'answer_saved',
+    'public answer saved (no login)',
+  );
   const aid = anj.answer.id;
 
   // 10. WS propagation — both viewers saw the question + answer with no reload
   await new Promise((res) => setTimeout(res, 1000));
-  const sawQ = received.map((arr) => arr.some((m) => m.type === 'event' && m.event?.type === 'question.created'));
-  const sawA = received.map((arr) => arr.some((m) => m.type === 'event' && m.event?.type === 'answer.created'));
+  const sawQ = received.map((arr) =>
+    arr.some((m) => m.type === 'event' && m.event?.type === 'question.created'),
+  );
+  const sawA = received.map((arr) =>
+    arr.some((m) => m.type === 'event' && m.event?.type === 'answer.created'),
+  );
   ok(sawQ[0] && sawQ[1], 'both WS viewers received question.created (no reload)');
   ok(sawA[0] && sawA[1], 'both WS viewers received answer.created (no reload)');
 
   // 11. receipt (agent-reported application evidence) advances answer status
-  const rc = await fetch(`${BASE}/api/v1/rooms/${id}/receipts`, { method: 'POST', headers: J({ authorization: bearer }), body: JSON.stringify({ questionId: qid, answerId: aid, state: 'applied', status: 'applied_to_project', decisionSummary: 'Chose D1 for the MVP store.', affectedPaths: ['docs/ask/decisions.md'] }) });
+  const rc = await fetch(`${BASE}/api/v1/rooms/${id}/receipts`, {
+    method: 'POST',
+    headers: J({ authorization: bearer }),
+    body: JSON.stringify({
+      questionId: qid,
+      answerId: aid,
+      state: 'applied',
+      status: 'applied_to_project',
+      decisionSummary: 'Chose D1 for the MVP store.',
+      affectedPaths: ['docs/ask/decisions.md'],
+    }),
+  });
   const rcj = await rc.json();
   ok([200, 201].includes(rc.status) && rcj.receipt?.id?.startsWith('rcpt_'), 'receipt recorded');
 
   // 12. receipt requires agent auth (spoof protection)
-  const rcNoAuth = await fetch(`${BASE}/api/v1/rooms/${id}/receipts`, { method: 'POST', headers: J(), body: JSON.stringify({ questionId: qid, answerId: aid, state: 'applied', status: 'applied_to_project' }) });
+  const rcNoAuth = await fetch(`${BASE}/api/v1/rooms/${id}/receipts`, {
+    method: 'POST',
+    headers: J(),
+    body: JSON.stringify({
+      questionId: qid,
+      answerId: aid,
+      state: 'applied',
+      status: 'applied_to_project',
+    }),
+  });
   ok(rcNoAuth.status === 401, 'receipt without agent token → 401 (no forged receipts)');
 
   // 13. snapshot reflects applied status + receipt (owner view)
   const fin = await fetch(`${BASE}/api/v1/rooms/${id}`, { headers: { cookie: ownerCookie } });
   const finj = await fin.json();
   ok(finj.viewerRole === 'owner', 'owner cookie → owner role');
-  ok(finj.answers?.find((a) => a.id === aid)?.status === 'applied_to_project', 'answer status advanced → applied_to_project');
+  ok(
+    finj.answers?.find((a) => a.id === aid)?.status === 'applied_to_project',
+    'answer status advanced → applied_to_project',
+  );
   ok((finj.receipts?.length ?? 0) >= 1, 'receipt present in snapshot');
 
   // 14. changes feed carries the full event chain
   const ch = await fetch(`${BASE}/api/v1/rooms/${id}/changes?cursor=0`);
   const chj = await ch.json();
   const types = (chj.events || []).map((e) => e.type);
-  ok(['room.created', 'question.created', 'answer.created', 'receipt.recorded'].every((t) => types.includes(t)), 'changes feed has full event chain');
+  ok(
+    ['room.created', 'question.created', 'answer.created', 'receipt.recorded'].every((t) =>
+      types.includes(t),
+    ),
+    'changes feed has full event chain',
+  );
 
   // 15. ownership — slug knowledge does NOT grant admin
-  const rnGuest = await fetch(`${BASE}/api/v1/rooms/${id}/settings`, { method: 'PATCH', headers: J(), body: JSON.stringify({ slug: `${slug}-x` }) });
+  const rnGuest = await fetch(`${BASE}/api/v1/rooms/${id}/settings`, {
+    method: 'PATCH',
+    headers: J(),
+    body: JSON.stringify({ slug: `${slug}-x` }),
+  });
   ok(rnGuest.status === 403, 'non-owner cannot rename (403)');
 
   // 16. owner rename keeps immutable room id; old slug aliases
-  const rnOwner = await fetch(`${BASE}/api/v1/rooms/${id}/settings`, { method: 'PATCH', headers: J({ cookie: ownerCookie }), body: JSON.stringify({ slug: `${slug}-renamed` }) });
+  const rnOwner = await fetch(`${BASE}/api/v1/rooms/${id}/settings`, {
+    method: 'PATCH',
+    headers: J({ cookie: ownerCookie }),
+    body: JSON.stringify({ slug: `${slug}-renamed` }),
+  });
   const rnOwnerj = await rnOwner.json();
-  ok(rnOwner.status === 200 && rnOwnerj.room?.slug === `${slug}-renamed` && rnOwnerj.room?.id === id, 'owner rename works; room id immutable');
+  ok(
+    rnOwner.status === 200 && rnOwnerj.room?.slug === `${slug}-renamed` && rnOwnerj.room?.id === id,
+    'owner rename works; room id immutable',
+  );
   const alias = await fetch(`${BASE}/api/v1/rooms/${slug}`);
   const aliasj = await alias.json();
   ok(alias.status === 200 && aliasj.room?.id === id, 'old slug alias still resolves to same room');
@@ -174,7 +262,10 @@ async function main() {
   ok((await fetch(`${BASE}/api/v1/nope`)).status === 404, 'unknown /api route → 404');
 
   // 18. billing honestly unconfigured (never a fake success)
-  const co = await fetch(`${BASE}/api/v1/rooms/${id}/checkout`, { method: 'POST', headers: { cookie: ownerCookie } });
+  const co = await fetch(`${BASE}/api/v1/rooms/${id}/checkout`, {
+    method: 'POST',
+    headers: { cookie: ownerCookie },
+  });
   ok(co.status === 501, 'checkout → honest 501 (billing not configured)');
 
   for (const ws of sockets) {

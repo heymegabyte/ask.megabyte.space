@@ -12,7 +12,7 @@ received answers — never repo files, never secrets), it produces:
 1. **Project understanding** — a 2-3 sentence plain-language summary synthesized
    from the Q&A so far.
 2. **Question quality** — for each OPEN question: `{ usefulness: 0..1, lame,
-   improvement }`. `lame` flags vague/redundant/low-value questions; `improvement`
+improvement }`. `lame` flags vague/redundant/low-value questions; `improvement`
    is one short rewrite suggestion shown only when `lame`.
 
 Both land (optionally) on `RoomSnapshot.understanding` + `.questionQuality` and

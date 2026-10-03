@@ -54,13 +54,20 @@ describe('public answer append (no account)', () => {
   it('appends an answer with no login and durably commits status answer_saved', async () => {
     const room = await createRoom();
     const { bearer } = await enrollAgent(room.id);
-    const { qid } = await publishQuestion(room.id, bearer, singleChoiceQuestion('answer-db-choice'));
+    const { qid } = await publishQuestion(
+      room.id,
+      bearer,
+      singleChoiceQuestion('answer-db-choice'),
+    );
 
     // No cookie, no bearer — a public visitor answers.
     const res = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/questions/${qid}/answers`, {
       method: 'POST',
       headers: jsonHeaders(),
-      body: JSON.stringify({ value: { kind: 'choice', selected: ['d1'] }, text: 'D1 for the MVP.' }),
+      body: JSON.stringify({
+        value: { kind: 'choice', selected: ['d1'] },
+        text: 'D1 for the MVP.',
+      }),
     });
     expect([200, 201]).toContain(res.status);
     const j = (await res.json()) as { answer: { id: string; status: string } };
@@ -68,25 +75,23 @@ describe('public answer append (no account)', () => {
     expect(j.answer.status).toBe('answer_saved');
   });
 
-  // KNOWN PRODUCT BUG (documented, not patched — out of scope to fix product code):
-  // answering a non-existent question returns 500 instead of 404.
+  // REGRESSION GUARD (bug fixed in 3f74d18): answering a non-existent question returns 404.
   //
-  // Root cause: worker/room.ts:202 `postAnswer` throws `new RoomError('question_not_found', 404)`
-  // INSIDE the Room Durable Object. That error crosses the JSRPC boundary back to the Worker
-  // and LOSES its prototype — so `app.onError`'s `e instanceof RoomError` check
-  // (worker/index.ts:44) is false, and it falls through to the generic `internal_error` 500.
-  // The receipts-401 gate works because it's checked in the Worker BEFORE the DO call;
-  // this 404 is thrown inside the DO. scripts/verify-prod.mjs never exercises this path.
-  //
-  // `it.fails` = this test PASSES while the bug exists (asserting 404 currently fails) and
-  // will START FAILING the moment the product is fixed to return 404 — a built-in tripwire.
-  it.fails('answering a non-existent question SHOULD be 404 (currently 500 — see bug note above)', async () => {
+  // The DO's `postAnswer` throws `new RoomError('question_not_found', 404)` INSIDE the Room
+  // Durable Object; that error loses its prototype across the JSRPC boundary, so the Worker's
+  // `app.onError` cannot rely on `e instanceof RoomError`. The fix maps the error by MESSAGE
+  // (`DO_ERROR_STATUS` in worker/index.ts) → 404. Authored as `it.fails` while the bug existed;
+  // now a normal passing assertion that keeps the mapping honest.
+  it('answering a non-existent question is 404, not 500 (DO RoomError mapped across JSRPC)', async () => {
     const room = await createRoom();
-    const res = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/questions/q_missing0000000000000000/answers`, {
-      method: 'POST',
-      headers: jsonHeaders(),
-      body: JSON.stringify({ value: { kind: 'skip' } }),
-    });
+    const res = await SELF.fetch(
+      `${ORIGIN}/api/${API}/rooms/${room.id}/questions/q_missing0000000000000000/answers`,
+      {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ value: { kind: 'skip' } }),
+      },
+    );
     expect(res.status).toBe(404);
   });
 });
@@ -106,7 +111,12 @@ describe('receipt auth + answer status advancement', () => {
     const res = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/receipts`, {
       method: 'POST',
       headers: jsonHeaders(),
-      body: JSON.stringify({ questionId: qid, answerId: aid, state: 'applied', status: 'applied_to_project' }),
+      body: JSON.stringify({
+        questionId: qid,
+        answerId: aid,
+        state: 'applied',
+        status: 'applied_to_project',
+      }),
     });
     expect(res.status).toBe(401);
   });
@@ -118,7 +128,10 @@ describe('receipt auth + answer status advancement', () => {
     const an = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.id}/questions/${qid}/answers`, {
       method: 'POST',
       headers: jsonHeaders(),
-      body: JSON.stringify({ value: { kind: 'choice', selected: ['d1'] }, text: 'D1 for the MVP.' }),
+      body: JSON.stringify({
+        value: { kind: 'choice', selected: ['d1'] },
+        text: 'D1 for the MVP.',
+      }),
     });
     const aid = ((await an.json()) as { answer: { id: string; status: string } }).answer.id;
 

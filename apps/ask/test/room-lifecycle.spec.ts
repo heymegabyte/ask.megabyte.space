@@ -82,7 +82,7 @@ describe('resolve by slug → guest', () => {
     const room = await createRoom();
     const res = await SELF.fetch(`${ORIGIN}/api/${API}/rooms/${room.slug}`);
     expect((res.headers.get('x-robots-tag') ?? '').toLowerCase()).toContain('noindex');
-    expect((res.headers.get('cache-control') ?? '')).toContain('no-store');
+    expect(res.headers.get('cache-control') ?? '').toContain('no-store');
   });
 
   it('unknown room id → 404; unknown /api route → 404', async () => {

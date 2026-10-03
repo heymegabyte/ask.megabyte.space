@@ -17,7 +17,10 @@ export interface SeededRoom {
 }
 
 /** POST /rooms → a fresh room; returns id + slug (owner cookie lives in the request jar). */
-export async function apiCreateRoom(request: APIRequestContext, base: string): Promise<{ id: string; slug: string }> {
+export async function apiCreateRoom(
+  request: APIRequestContext,
+  base: string,
+): Promise<{ id: string; slug: string }> {
   const res = await request.post(`${base}/api/${API}/rooms`, { data: {} });
   const j = (await res.json()) as { room: { id: string; slug: string } };
   return { id: j.room.id, slug: j.room.slug };

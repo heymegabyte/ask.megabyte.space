@@ -61,11 +61,11 @@ The free loop needs none of these. To match the hosted feature set:
   private rooms — the code has no license gate. The hosted `$10/month` is a deployment policy you
   are free not to run.
 
-   ```sh
-   pnpm --filter @ask/app exec wrangler secret put STRIPE_SECRET_KEY
-   pnpm --filter @ask/app exec wrangler secret put STRIPE_PRICE_ID
-   pnpm --filter @ask/app exec wrangler secret put STRIPE_WEBHOOK_SECRET
-   ```
+  ```sh
+  pnpm --filter @ask/app exec wrangler secret put STRIPE_SECRET_KEY
+  pnpm --filter @ask/app exec wrangler secret put STRIPE_PRICE_ID
+  pnpm --filter @ask/app exec wrangler secret put STRIPE_WEBHOOK_SECRET
+  ```
 
 ## What's not in the box yet
 

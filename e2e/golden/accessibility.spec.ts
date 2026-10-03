@@ -11,10 +11,11 @@ import { shot } from './_shot';
 
 const BASE = process.env.PROD_URL ?? 'https://ask-megabyte-space.manhattan.workers.dev';
 
-
 /** Run axe, filter to serious+critical, and return a readable violation list. */
 async function seriousCritical(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
   return results.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id} (${v.impact}) × ${v.nodes.length}`);
@@ -24,7 +25,9 @@ for (const width of [375, 1280]) {
   test.describe(`axe @ ${width}`, () => {
     test.use({ viewport: { width, height: width < 500 ? 812 : 800 } });
 
-    test(`0 serious/critical across Questions · Decisions · Activity @ ${width}`, async ({ page }) => {
+    test(`0 serious/critical across Questions · Decisions · Activity @ ${width}`, async ({
+      page,
+    }) => {
       const room = await seedOwnedRoom(page, BASE);
       await page.goto(`/${room.slug}`);
       const card = page.getByTestId('question-card').first();
