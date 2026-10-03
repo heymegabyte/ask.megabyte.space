@@ -485,6 +485,7 @@ export function QuestionCard({
               variant="ghost"
               icon={Sparkle}
               disabled={sending}
+              aria-label="Let the agent decide"
               data-testid="answer-delegate"
               onClick={() => onSubmit({ kind: 'delegate' }, freeText)}
             />

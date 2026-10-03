@@ -174,6 +174,220 @@ p,
   }
 }
 
+/* ── Easter-egg + polish surfaces (all motion reduced-motion-gated below) ── */
+
+/* Egg 1 — Konami starfield overlay. Fixed, scrim + canvas; click to dismiss. */
+.ask-starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: auto;
+  background: radial-gradient(60rem 48rem at 50% 50%, oklch(0 0 0 / 0.35), oklch(0 0 0 / 0.72));
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  animation: ask-fade-in 0.4s ease both;
+}
+.ask-starfield canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* Reduced-motion fallback: a single static cyan glow, no travel/twinkle. */
+.ask-starfield-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(30rem 24rem at 50% 45%, oklch(0.82 0.15 195 / 0.3), transparent 70%);
+}
+.ask-starfield-label {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ask-cyan);
+  text-shadow: 0 0 18px oklch(0.82 0.15 195 / 0.55);
+  opacity: 0.9;
+}
+
+@keyframes ask-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Egg 3 — keyboard-shortcut legend (focus-trapped dialog). */
+.ask-legend-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: oklch(0 0 0 / 0.6);
+  backdrop-filter: blur(4px);
+  animation: ask-fade-in 0.2s ease both;
+}
+.ask-legend {
+  width: 100%;
+  max-width: 30rem;
+  border-radius: 1rem;
+  border: 1px solid var(--ask-accent-line);
+  background: #0b0b18f2;
+  box-shadow: 0 24px 60px -20px oklch(0 0 0 / 0.85);
+  padding: 1.25rem 1.35rem 1rem;
+}
+.ask-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.ask-legend-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ask-legend-title > span[aria-hidden] {
+  color: var(--ask-accent);
+}
+.ask-legend-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 0.6rem;
+  border: 1px solid oklch(1 0 0 / 0.12);
+  background: transparent;
+  color: oklch(1 0 0 / 0.7);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.ask-legend-close:hover {
+  border-color: oklch(1 0 0 / 0.28);
+  color: #fff;
+}
+.ask-legend-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.ask-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.ask-legend-row dt {
+  flex: 0 0 auto;
+  min-width: 8.5rem;
+  margin: 0;
+}
+.ask-legend-row dd {
+  margin: 0;
+  font-size: 0.86rem;
+  color: oklch(1 0 0 / 0.78);
+}
+.ask-kbd {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: 0.4rem;
+  color: var(--ask-accent);
+  background: var(--ask-accent-soft);
+  border: 1px solid var(--ask-accent-line);
+  white-space: nowrap;
+}
+.ask-legend-foot {
+  margin: 0.95rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: oklch(1 0 0 / 0.45);
+}
+
+/* Egg 4 — first-answer celebration: a single soft cyan pulse ring, one-shot. */
+.ask-celebrate {
+  position: relative;
+}
+.ask-celebrate::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 0 oklch(0.82 0.15 var(--ask-accent-h) / 0.55);
+  animation: ask-celebrate-pulse 1.6s cubic-bezier(0.2, 0, 0, 1) 2;
+}
+@keyframes ask-celebrate-pulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.82 0.15 var(--ask-accent-h) / 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 18px oklch(0.82 0.15 var(--ask-accent-h) / 0);
+  }
+}
+
+/* Polish — ProjectUnderstanding "updated" pulse when the summary changes. */
+.ask-updated {
+  animation: ask-updated-glow 1.8s ease 1;
+}
+@keyframes ask-updated-glow {
+  0% {
+    border-color: var(--ask-accent);
+    box-shadow: 0 0 0 1px var(--ask-accent-line);
+  }
+  100% {
+    border-color: var(--ask-accent-line);
+    box-shadow: 0 0 0 1px transparent;
+  }
+}
+
+/* Egg 5 — zen (calm) mode: hide chrome, center the active question. Driven by
+   the `ask-zen` class on <html> (set by the "zen" egg). */
+html.ask-zen [data-zen-hide] {
+  display: none !important;
+}
+html.ask-zen .ask-zen-focus {
+  margin-top: 8vh;
+}
+html.ask-zen main {
+  max-width: 44rem;
+}
+/* The active question list in zen mode gets a touch more breathing room. */
+html.ask-zen .ask-zen-active {
+  gap: 1.5rem;
+}
+
+/* 24px-min target helper for chips + icon-only buttons (WCAG 2.2 §2.5.8). */
+.ask-tap-target {
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Keep focus-visible rings on the new raw controls, too. */
+:where(.ask-legend-close, .ask-starfield):focus-visible {
+  outline: 2px solid var(--ask-accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
 /* Honor reduced-motion for every transition/animation we add. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -186,6 +400,15 @@ p,
   }
   .ask-card:hover {
     transform: none;
+  }
+  /* Egg surfaces: keep the appearance, kill the motion. */
+  .ask-starfield,
+  .ask-legend-backdrop {
+    animation: none !important;
+  }
+  .ask-celebrate::after,
+  .ask-updated {
+    animation: none !important;
   }
 }
 

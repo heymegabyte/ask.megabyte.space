@@ -13,6 +13,7 @@ import { Banner, Button, Loader, useKumoToastManager } from '@cloudflare/kumo';
 import { Sparkle } from '@phosphor-icons/react';
 import { createRoom, ApiError } from './api';
 import { Room } from './Room';
+import { Eggs } from './eggs';
 import { Card, Eyebrow, Heading, Muted } from './components/ui';
 
 type ToastInput = { title: string; description?: string; variant?: 'success' | 'error' | 'info' | 'warning' };
@@ -109,8 +110,14 @@ export function App() {
     [toasts],
   );
 
-  if (!slug) return <CreateFlow />;
-  return <Room identifier={slug} onToast={toast} />;
+  return (
+    <>
+      {/* Tasteful, reduced-motion-safe easter eggs + the keyboard-shortcut legend.
+          Mounted once at the root so eggs work on every surface (hero, room, 404). */}
+      <Eggs slug={slug || undefined} />
+      {!slug ? <CreateFlow /> : <Room identifier={slug} onToast={toast} />}
+    </>
+  );
 }
 
 export { Loader };

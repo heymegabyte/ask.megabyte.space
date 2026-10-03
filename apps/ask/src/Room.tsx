@@ -18,8 +18,8 @@
  * draft, and a newly-arrived question never steals focus or reorders the active
  * card (we render in a stable id order; horizon only buckets, it never reshuffles).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Banner, Button, Loader, Tabs, Tooltip } from '@cloudflare/kumo';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Badge, Banner, Button, Loader, Tooltip } from '@cloudflare/kumo';
 import {
   ArrowClockwise,
   ArrowLeft,
@@ -53,6 +53,7 @@ import { recordRecentPage } from './recentPages';
 import { RoomHeader } from './components/RoomHeader';
 import { ProjectUnderstanding } from './ProjectUnderstanding';
 import { QuestionCard, emptyDraft, type QuestionDraft } from './components/QuestionCard';
+import { useZenMode } from './eggs';
 import { Card, Eyebrow, Heading, Mono, Muted, clockTime, relativeTime, slugAccentHue } from './components/ui';
 
 type ToastInput = { title: string; description?: string; variant?: 'success' | 'error' | 'info' | 'warning' };
@@ -60,6 +61,34 @@ type TabKey = 'questions' | 'decisions' | 'activity';
 
 const TOP_COUNT = 5;
 const noop = () => {};
+const TAB_ORDER: TabKey[] = ['questions', 'decisions', 'activity'];
+
+/** Egg 8 — whimsical-but-helpful empty-state lines (rotates deterministically). */
+const VOID_LINES = [
+  'Ask the void — your agent has nothing to ask right now. New questions appear here live.',
+  'All quiet on the agent front. The moment it hits a fork in the road, it shows up here.',
+  'No open questions. Somewhere, an agent is resisting the urge to guess. New ones land here.',
+  'Inbox zero for your agent. When it needs a human call, this page updates instantly.',
+];
+
+/** Egg 4 — remember the first-answer celebration per room (once ever, this browser). */
+function firstAnswerKey(roomId: string): string {
+  return `ask.firstAnswer.${roomId}`;
+}
+function hasCelebratedFirstAnswer(roomId: string): boolean {
+  try {
+    return localStorage.getItem(firstAnswerKey(roomId)) === '1';
+  } catch {
+    return true; // private mode → never nag
+  }
+}
+function markCelebratedFirstAnswer(roomId: string): void {
+  try {
+    localStorage.setItem(firstAnswerKey(roomId), '1');
+  } catch {
+    /* best-effort */
+  }
+}
 
 /** Short human label per question kind — shown as a badge on collapsed queue rows. */
 const KIND_LABEL: Record<Question['kind'], string> = {
@@ -104,6 +133,22 @@ export function Room({ identifier, onToast = noop }: Props) {
   const [rescanning, setRescanning] = useState(false); // AI re-scan (§6) in flight
   const setupPromptRef = useRef<string | null>(null);
   const [setupPrompt, setSetupPrompt] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState(false); // egg 4 — first-answer pulse
+  const zen = useZenMode(); // egg 5 — calm mode (hide chrome, center question)
+
+  // Egg 4 — the first time this room has a committed answer, pulse once + microcopy.
+  const committedAnswers = load.status === 'ready' ? load.store.answers.length : 0;
+  useEffect(() => {
+    if (load.status !== 'ready' || !load.store.room) return;
+    const id = load.store.room.id;
+    if (committedAnswers > 0 && !hasCelebratedFirstAnswer(id)) {
+      markCelebratedFirstAnswer(id);
+      setCelebrate(true);
+      const t = window.setTimeout(() => setCelebrate(false), 3600);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [committedAnswers, load]);
 
   const draftFor = useCallback((id: string): QuestionDraft => drafts[id] ?? emptyDraft, [drafts]);
   const setDraft = useCallback(
@@ -307,6 +352,9 @@ export function Room({ identifier, onToast = noop }: Props) {
   const queued = ordered.slice(TOP_COUNT);
   const latestAgent = [...store.agents].sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))[0];
 
+  const answeredIds = new Set(store.answers.map((a) => a.questionId));
+  const unanswered = ordered.filter((q) => !answeredIds.has(q.id)).length;
+
   // AI quality verdicts, keyed by question id — drives the subtle "could be sharper" hint (§6).
   const qualityByQuestion = new Map<string, QuestionQuality>(
     (store.questionQuality ?? []).map((q) => [q.questionId, q]),
@@ -368,56 +416,68 @@ export function Room({ identifier, onToast = noop }: Props) {
       style={{ ['--ask-accent-h' as string]: String(accentHue) }}
       aria-live="off"
     >
-      <RoomHeader
-        room={room}
-        isOwner={isOwner}
-        roomUrl={roomUrl}
-        onRoomChange={setRoom}
-        onCopySetupPrompt={() => void copySetupPrompt()}
-        onCopyLink={() => void copyLink()}
-        onNewPage={() => void newPage()}
-        onToast={onToast}
-      />
+      <div data-zen-hide>
+        <RoomHeader
+          room={room}
+          isOwner={isOwner}
+          roomUrl={roomUrl}
+          onRoomChange={setRoom}
+          onCopySetupPrompt={() => void copySetupPrompt()}
+          onCopyLink={() => void copyLink()}
+          onNewPage={() => void newPage()}
+          onToast={onToast}
+        />
+      </div>
 
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
-        <ConnectionPanel
-          connected={connected}
-          connection={connection}
-          latestAgent={latestAgent}
-          setupPrompt={setupPrompt}
-          onCopySetupPrompt={() => void copySetupPrompt()}
-        />
+        <div data-zen-hide className="flex flex-col gap-5">
+          <ConnectionPanel
+            connected={connected}
+            connection={connection}
+            latestAgent={latestAgent}
+            setupPrompt={setupPrompt}
+            onCopySetupPrompt={() => void copySetupPrompt()}
+          />
 
-        {/* AI read of the project (§6) — renders only once there's a real summary.
-            Owner gets a quiet re-scan; it updates live as answers arrive. */}
-        <ProjectUnderstanding
-          understanding={store.understanding}
-          onRescan={isOwner ? () => void rescan() : undefined}
-          rescanning={rescanning}
-        />
+          {/* AI read of the project (§6) — renders only once there's a real summary.
+              Owner gets a quiet re-scan; it updates live as answers arrive. */}
+          <ProjectUnderstanding
+            understanding={store.understanding}
+            onRescan={isOwner ? () => void rescan() : undefined}
+            rescanning={rescanning}
+          />
 
-        {/* Reconnecting ribbon — the WS dropped but we're retrying; state isn't lost. */}
-        {connected && (connection === 'reconnecting' || connection === 'closed') ? (
+          {/* Reconnecting ribbon — the WS dropped but we're retrying; state isn't lost. */}
+          {connected && (connection === 'reconnecting' || connection === 'closed') ? (
+            <div
+              role="status"
+              data-testid="connection-reconnecting"
+              className="flex items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-2 text-sm text-amber-200"
+            >
+              <ArrowClockwise size={15} className="animate-spin" />
+              {connection === 'closed' ? 'Connection lost — reconnecting…' : 'Reconnecting to live updates…'}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Egg 4 — restrained first-answer celebration (once per room). */}
+        {celebrate ? (
           <div
             role="status"
-            data-testid="connection-reconnecting"
-            className="flex items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-2 text-sm text-amber-200"
+            data-testid="first-answer-celebrate"
+            className="ask-celebrate ask-enter flex items-center gap-2.5 rounded-xl border border-[color:var(--ask-accent-line)] bg-[color:var(--ask-accent-soft)] px-4 py-2.5 text-sm text-white/85"
           >
-            <ArrowClockwise size={15} className="animate-spin" />
-            {connection === 'closed' ? 'Connection lost — reconnecting…' : 'Reconnecting to live updates…'}
+            <CheckCircle size={16} weight="fill" className="shrink-0 text-[color:var(--ask-accent)]" aria-hidden="true" />
+            First answer in — your agent is listening.
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between gap-3">
-          <Tabs
-            variant="underline"
-            tabs={[
-              { value: 'questions', label: `Questions${ordered.length ? ` (${ordered.length})` : ''}` },
-              { value: 'decisions', label: 'Decisions' },
-              { value: 'activity', label: 'Activity' },
-            ]}
-            value={tab}
-            onValueChange={(v) => setTab(v as TabKey)}
+        <div data-zen-hide className="flex items-center justify-between gap-3">
+          <RoomTabs
+            tab={tab}
+            onTab={setTab}
+            questionCount={ordered.length}
+            unanswered={unanswered}
           />
           {/* Mobile-only focus toggle — one-question-at-a-time flow. */}
           {tab === 'questions' && ordered.length > 1 ? (
@@ -437,19 +497,13 @@ export function Room({ identifier, onToast = noop }: Props) {
           ) : null}
         </div>
 
-        {/* data-testid anchors for the three tabs (Kumo renders its own buttons). */}
-        <div className="sr-only">
-          <span data-testid="tab-questions" />
-          <span data-testid="tab-decisions" />
-          <span data-testid="tab-activity" />
-        </div>
-
         {tab === 'questions' ? (
-          ordered.length === 0 ? (
+          <div role="tabpanel" id="tabpanel-questions" aria-labelledby="tab-questions">
+          {ordered.length === 0 ? (
             <QuestionsEmpty connected={connected} onCopySetupPrompt={() => void copySetupPrompt()} />
           ) : focusMode && focusQ ? (
             // ── Mobile one-question focus view ──
-            <section aria-live="polite" className="flex flex-col gap-4">
+            <section aria-live="polite" className="ask-zen-focus flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <Eyebrow>
                   Question {Math.min(focusIndex + 1, ordered.length)} of {ordered.length}
@@ -496,14 +550,18 @@ export function Room({ identifier, onToast = noop }: Props) {
             </section>
           ) : (
             // ── Desktop / mobile list view ──
-            <div className="flex flex-col gap-4" aria-live="polite" aria-relevant="additions">
+            <div
+              className={['ask-zen-focus flex flex-col gap-4', zen ? 'ask-zen-active' : ''].join(' ')}
+              aria-live="polite"
+              aria-relevant="additions"
+            >
               <section className="flex flex-col gap-4">
                 <Eyebrow>Now — {top.length} to decide</Eyebrow>
                 {top.map((q) => renderCard(q, false, true))}
               </section>
 
               {queued.length ? (
-                <section className="flex flex-col gap-2">
+                <section data-zen-hide className="flex flex-col gap-2">
                   <Eyebrow>Next &amp; later · {queued.length}</Eyebrow>
                   {queued.map((q) => {
                     // Auto-open a queued row if it has a saved answer or an in-progress draft,
@@ -528,15 +586,24 @@ export function Room({ identifier, onToast = noop }: Props) {
                 </section>
               ) : null}
             </div>
-          )
+          )}
+          </div>
         ) : null}
 
-        {tab === 'decisions' ? <DecisionsTab store={store} /> : null}
-        {tab === 'activity' ? <ActivityTab store={store} /> : null}
+        {tab === 'decisions' ? (
+          <div role="tabpanel" id="tabpanel-decisions" aria-labelledby="tab-decisions">
+            <DecisionsTab store={store} />
+          </div>
+        ) : null}
+        {tab === 'activity' ? (
+          <div role="tabpanel" id="tabpanel-activity" aria-labelledby="tab-activity">
+            <ActivityTab store={store} />
+          </div>
+        ) : null}
 
         {/* Owner-only upgrade — honest about billing readiness. */}
         {isOwner ? (
-          <Card className="mt-2 flex flex-col gap-3 p-5">
+          <Card data-zen-hide className="mt-2 flex flex-col gap-3 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <Lock size={18} className="text-[color:var(--ask-accent)]" />
@@ -575,6 +642,109 @@ export function Room({ identifier, onToast = noop }: Props) {
           </Card>
         ) : null}
       </main>
+    </div>
+  );
+}
+
+/**
+ * RoomTabs — an accessible tablist with ARROW-KEY navigation + roving tabindex
+ * (replaces Kumo <Tabs> so we own the keyboard model + the "N unanswered" count).
+ * ←/→ move between tabs, Home/End jump to ends; only the active tab is in the tab
+ * order (roving), the rest are reachable via arrows per the WAI-ARIA tabs pattern.
+ * The questions tab shows a live "N unanswered" count affordance.
+ */
+function RoomTabs({
+  tab,
+  onTab,
+  questionCount,
+  unanswered,
+}: {
+  tab: TabKey;
+  onTab: (t: TabKey) => void;
+  questionCount: number;
+  unanswered: number;
+}) {
+  const refs = useRef<Record<TabKey, HTMLButtonElement | null>>({
+    questions: null,
+    decisions: null,
+    activity: null,
+  });
+
+  const focusTab = (t: TabKey) => {
+    onTab(t);
+    // Move focus with the selection so the roving tabindex + arrow model matches.
+    window.requestAnimationFrame(() => refs.current[t]?.focus());
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    const i = TAB_ORDER.indexOf(tab);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusTab(TAB_ORDER[(i + 1) % TAB_ORDER.length]!);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      focusTab(TAB_ORDER[(i - 1 + TAB_ORDER.length) % TAB_ORDER.length]!);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      focusTab(TAB_ORDER[0]!);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      focusTab(TAB_ORDER[TAB_ORDER.length - 1]!);
+    }
+  };
+
+  const label: Record<TabKey, string> = {
+    questions: `Questions${questionCount ? ` (${questionCount})` : ''}`,
+    decisions: 'Decisions',
+    activity: 'Activity',
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Room sections"
+      aria-orientation="horizontal"
+      onKeyDown={onKeyDown}
+      className="flex items-center gap-1 border-b border-white/10"
+    >
+      {TAB_ORDER.map((t) => {
+        const active = t === tab;
+        return (
+          <button
+            key={t}
+            ref={(el) => {
+              refs.current[t] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`tab-${t}`}
+            data-testid={`tab-${t}`}
+            aria-selected={active}
+            aria-controls={`tabpanel-${t}`}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onTab(t)}
+            className={[
+              'relative -mb-px inline-flex min-h-[32px] items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+              active
+                ? 'border-[color:var(--ask-accent)] text-white'
+                : 'border-transparent text-white/60 hover:text-white/85',
+            ].join(' ')}
+          >
+            {label[t]}
+            {/* "N unanswered" count affordance, only on the Questions tab. */}
+            {t === 'questions' && unanswered > 0 ? (
+              <span
+                data-testid="unanswered-count"
+                aria-label={`${unanswered} unanswered`}
+                title={`${unanswered} still need an answer`}
+                className="ask-mono inline-flex min-h-[20px] min-w-[20px] items-center justify-center rounded-full bg-[color:var(--ask-accent-soft)] px-1.5 text-[0.65rem] font-semibold text-[color:var(--ask-accent)] ring-1 ring-[color:var(--ask-accent-line)]"
+              >
+                {unanswered}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -747,11 +917,18 @@ function SharperHint({ improvement }: { improvement: string }) {
   );
 }
 
-/** Questions empty state — a launchpad: copy-setup-prompt is the first action. */
+/** Questions empty state — a launchpad: copy-setup-prompt is the first action.
+ *  Egg 8: when connected, the "ask the void" line rotates daily (dev-humor, still
+ *  helpful). Egg 6: an HTTP 418 + "42" nod hides in the icon's title attribute. */
 function QuestionsEmpty({ connected, onCopySetupPrompt }: { connected: boolean; onCopySetupPrompt: () => void }) {
+  // Deterministic daily rotation so the line is stable within a session.
+  const dayIndex = Math.floor(Date.now() / 86_400_000) % VOID_LINES.length;
   return (
     <Card className="flex flex-col items-center gap-4 p-10 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[color:var(--ask-accent-soft)] text-[color:var(--ask-accent)]">
+      <span
+        className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[color:var(--ask-accent-soft)] text-[color:var(--ask-accent)]"
+        title="HTTP 418 · the answer is 42"
+      >
         <QuestionIcon size={30} weight="duotone" />
       </span>
       <Heading level={2} className="ask-h2">
@@ -759,7 +936,7 @@ function QuestionsEmpty({ connected, onCopySetupPrompt }: { connected: boolean; 
       </Heading>
       <Muted className="max-w-md text-center">
         {connected
-          ? 'Your agent has nothing to ask right now. New questions appear here the moment it does — this page updates live.'
+          ? VOID_LINES[dayIndex]
           : 'Once your agent is connected, the decisions it would otherwise guess at show up here.'}
       </Muted>
       {!connected ? (
