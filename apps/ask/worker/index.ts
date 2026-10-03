@@ -38,6 +38,13 @@ app.use('*', async (c, next) => {
   // Discovery: no indexing anywhere (§1 — public is still public, just not indexed).
   c.header('X-Robots-Tag', 'noindex, nofollow');
   if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store');
+  // Baseline security headers on every worker response (the SPA shell adds CSP via public/_headers).
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), browsing-topics=()');
+  c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  c.header('Cross-Origin-Opener-Policy', 'same-origin');
 });
 
 /** RoomError thrown INSIDE the DO loses its prototype across JSRPC — map by message. */
@@ -87,6 +94,24 @@ async function getPrincipal(c: Context<Ctx>): Promise<{
   // Host-only (no Domain), HttpOnly, SameSite=Lax, ~400 days (§4).
   const setCookie = `${SID_COOKIE}=${fresh}; HttpOnly; SameSite=Lax; Path=/;${secure} Max-Age=34560000`;
   return { principal: await sha256(fresh), setCookie };
+}
+
+/**
+ * CSRF defense (§14): reject cross-site state changes on cookie-authed owner routes.
+ * Browsers always send `Origin` on state-changing requests; a malicious site's forged
+ * POST carries its own origin and is blocked. CLI agents send no `Origin` (allowed —
+ * they authenticate with a Bearer token, not the browser cookie).
+ */
+function untrustedOrigin(c: Context<Ctx>): boolean {
+  const origin = c.req.header('Origin');
+  if (!origin) return false;
+  try {
+    const host = new URL(origin).host;
+    const allowed = new Set([new URL(c.env.SERVICE_ORIGIN).host, new URL(c.req.url).host]);
+    return !allowed.has(host);
+  } catch {
+    return true;
+  }
 }
 
 /** Optional agent identity from `Authorization: Bearer <installId>.<token>` (§12). */
@@ -243,6 +268,7 @@ app.post(`/api/${API_VERSION}/rooms/:id/receipts`, async (c) => {
 
 // ── owner settings: rename (slug changes, room id immutable §4) ──────────────
 app.patch(`/api/${API_VERSION}/rooms/:id/settings`, async (c) => {
+  if (untrustedOrigin(c)) return err(c, 'bad_origin', 403);
   const id = c.req.param('id');
   const { principal } = await getPrincipal(c);
   const row = await roomRow(c.env, id);
@@ -273,6 +299,7 @@ app.patch(`/api/${API_VERSION}/rooms/:id/settings`, async (c) => {
 
 // ── checkout (Stripe) — honest status when not yet configured (§15) ──────────
 app.post(`/api/${API_VERSION}/rooms/:id/checkout`, async (c) => {
+  if (untrustedOrigin(c)) return err(c, 'bad_origin', 403);
   const row = await roomRow(c.env, c.req.param('id'));
   if (!row) return err(c, 'room_not_found', 404);
   const { principal } = await getPrincipal(c);
@@ -287,6 +314,7 @@ app.post(`/api/${API_VERSION}/rooms/:id/checkout`, async (c) => {
 
 // ── AI enrichment: manual re-scan trigger (authorized owner §6) ──────────────
 app.post(`/api/${API_VERSION}/rooms/:id/enrich`, async (c) => {
+  if (untrustedOrigin(c)) return err(c, 'bad_origin', 403);
   const id = c.req.param('id');
   const { principal } = await getPrincipal(c);
   const row = await roomRow(c.env, id);
@@ -299,6 +327,7 @@ app.post(`/api/${API_VERSION}/rooms/:id/enrich`, async (c) => {
 
 // ── live transport: forward WS upgrade to the room DO (§13) ──────────────────
 app.get(`/api/${API_VERSION}/rooms/:id/events`, async (c) => {
+  if (untrustedOrigin(c)) return err(c, 'bad_origin', 403);
   const id = c.req.param('id');
   if (c.req.header('Upgrade') !== 'websocket') return err(c, 'expected_websocket', 426);
   const row = await roomRow(c.env, id);
