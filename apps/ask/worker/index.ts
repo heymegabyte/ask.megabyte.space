@@ -18,7 +18,7 @@ import {
   type Room,
   UpdateSettingsRequest,
 } from '@ask/contracts';
-import type { Env } from './env';
+import type { Env, RateLimiter } from './env';
 import { RoomDurableObject, RoomError } from './room';
 import { newRoomId, newSecret, sha256 } from './ids';
 import { generateSlug, isValidSlug, normalizeSlug } from './slugs';
@@ -70,6 +70,22 @@ function err(c: Context<Ctx>, code: string, status: ContentfulStatusCode, detail
 
 function roomStub(env: Env, roomId: string) {
   return env.ROOM.get(env.ROOM.idFromName(roomId));
+}
+
+/**
+ * Per-IP rate limit (§17 abuse controls) via the CF rate-limit binding. Honest no-op
+ * when the binding is absent (local/dev); fail-OPEN on limiter error so an infra blip
+ * never blocks legitimate traffic. Returns true when the caller is OVER the limit.
+ */
+async function rateLimited(c: Context<Ctx>, limiter: RateLimiter | undefined): Promise<boolean> {
+  if (!limiter) return false;
+  const key = c.req.header('CF-Connecting-IP') ?? 'anon';
+  try {
+    const { success } = await limiter.limit({ key });
+    return !success;
+  } catch {
+    return false;
+  }
 }
 
 function parseCookies(header: string | undefined): Record<string, string> {
@@ -141,6 +157,7 @@ app.get('/api/health', (c) =>
 
 // ── create or claim a room (idempotent, atomic slug claim §4, §11) ───────────
 app.post(`/api/${API_VERSION}/rooms`, async (c) => {
+  if (await rateLimited(c, c.env.CREATE_LIMIT)) return err(c, 'rate_limited', 429);
   const { principal, setCookie } = await getPrincipal(c);
   const parsed = CreateRoomRequest.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return err(c, 'invalid_request', 400, { issues: parsed.error.issues });
@@ -223,6 +240,7 @@ app.get(`/api/${API_VERSION}/rooms/:id/changes`, async (c) => {
 
 // ── agent enrollment (rate-limited anonymous; no admin power §12) ─────────────
 app.post(`/api/${API_VERSION}/rooms/:id/agents`, async (c) => {
+  if (await rateLimited(c, c.env.WRITE_LIMIT)) return err(c, 'rate_limited', 429);
   const id = c.req.param('id');
   if (!(await roomRow(c.env, id))) return err(c, 'room_not_found', 404);
   const parsed = EnrollAgentRequest.safeParse(await c.req.json().catch(() => ({})));
@@ -232,6 +250,7 @@ app.post(`/api/${API_VERSION}/rooms/:id/agents`, async (c) => {
 
 // ── publish deduplicated questions ───────────────────────────────────────────
 app.post(`/api/${API_VERSION}/rooms/:id/questions:batch`, async (c) => {
+  if (await rateLimited(c, c.env.WRITE_LIMIT)) return err(c, 'rate_limited', 429);
   const id = c.req.param('id');
   if (!(await roomRow(c.env, id))) return err(c, 'room_not_found', 404);
   const parsed = PostQuestionsRequest.safeParse(await c.req.json().catch(() => ({})));
@@ -242,6 +261,7 @@ app.post(`/api/${API_VERSION}/rooms/:id/questions:batch`, async (c) => {
 
 // ── append an answer revision (public, no account §7) ────────────────────────
 app.post(`/api/${API_VERSION}/rooms/:id/questions/:qid/answers`, async (c) => {
+  if (await rateLimited(c, c.env.WRITE_LIMIT)) return err(c, 'rate_limited', 429);
   const id = c.req.param('id');
   const qid = c.req.param('qid');
   const row = await roomRow(c.env, id);
