@@ -27,6 +27,7 @@ import {
 } from '@phosphor-icons/react';
 import type { MeRoom } from '@ask/contracts';
 import { createRoom, fetchMeRooms, ApiError } from './api';
+import { AskLogo } from './components/AskLogo';
 import { GetStartedPrompts } from './components/GetStartedPrompts';
 import { Card, Eyebrow, Heading, Muted, relativeTime, slugAccentHue } from './components/ui';
 
@@ -131,8 +132,11 @@ export function Dashboard({ onOpen, onToast = noop }: Props) {
   return (
     <div className="ask-shell min-h-dvh">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/10 bg-[#060610]/85 px-4 py-3 backdrop-blur-md sm:px-6">
-        <span className="ask-mono flex shrink-0 items-center gap-1 text-sm font-semibold text-white">
-          <span className="text-[color:var(--ask-accent)]">◆</span> ask
+        <span className="flex shrink-0 items-center">
+          <AskLogo
+            markClassName="h-12 w-12 shrink-0 [filter:drop-shadow(0_0_9px_rgba(0,229,255,0.42))]"
+            textClassName="text-[clamp(1.4rem,5vw,1.7rem)] font-bold leading-none tracking-tight text-white [font-family:var(--font-heading)]"
+          />
         </span>
         <span className="hidden h-5 w-px shrink-0 bg-white/15 sm:block" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate text-sm text-white/55">Your pages</span>
