@@ -362,6 +362,23 @@ app.post(`/api/${API_VERSION}/rooms/:id/questions/:qid/answers`, async (c) => {
   return c.json({ answer }, 201);
 });
 
+// ── archive / restore a question (owner — AI auto-archives stale/inappropriate ones §6) ──
+app.post(`/api/${API_VERSION}/rooms/:id/questions/:qid/archive`, async (c) => {
+  if (untrustedOrigin(c)) return err(c, 'bad_origin', 403);
+  const id = c.req.param('id');
+  const row = await roomRow(c.env, id);
+  if (!row) return err(c, 'room_not_found', 404);
+  const { principal } = await getPrincipal(c);
+  if (row.owner_principal !== principal) return err(c, 'forbidden', 403);
+  const body = (await c.req.json().catch(() => ({}))) as { archived?: boolean };
+  const question = await roomStub(c.env, row.room_id).setQuestionArchived(
+    c.req.param('qid'),
+    body.archived !== false,
+  );
+  if (!question) return err(c, 'question_not_found', 404);
+  return c.json({ question });
+});
+
 // ── record an installation's own retrieval/application evidence (§10, §12) ────
 app.post(`/api/${API_VERSION}/rooms/:id/receipts`, async (c) => {
   const id = c.req.param('id');

@@ -74,6 +74,9 @@ function ImageComparison({
   onDraftChange: (next: QuestionDraft) => void;
 }) {
   const selected = draft.selected[0] ?? '';
+  // Track option images that fail to load (404 / broken URL) so we degrade to the
+  // "no preview" placeholder instead of a browser's broken-image glyph.
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
   return (
     <div
       role="radiogroup"
@@ -82,6 +85,7 @@ function ImageComparison({
     >
       {question.options.map((opt) => {
         const isSel = selected === opt.id;
+        const showImage = Boolean(opt.imageUrl) && !failed[opt.id];
         return (
           <button
             key={opt.id}
@@ -96,13 +100,14 @@ function ImageComparison({
                 : 'border-white/10 hover:border-white/25',
             ].join(' ')}
           >
-            {opt.imageUrl ? (
+            {showImage ? (
               <img
                 src={opt.imageUrl}
                 alt={opt.label}
                 loading="lazy"
                 decoding="async"
-                className="aspect-video w-full object-cover"
+                className="aspect-video w-full bg-white/5 object-cover"
+                onError={() => setFailed((f) => ({ ...f, [opt.id]: true }))}
               />
             ) : (
               <div className="flex aspect-video w-full items-center justify-center bg-white/5 text-white/40">

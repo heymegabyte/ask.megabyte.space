@@ -28,7 +28,9 @@ import {
 } from 'react';
 import { Badge, Banner, Button, Loader, Tooltip } from '@cloudflare/kumo';
 import {
+  Archive,
   ArrowClockwise,
+  ArrowCounterClockwise,
   ArrowLeft,
   ArrowRight,
   CaretRight,
@@ -42,7 +44,10 @@ import {
   PlugsConnected,
   Question as QuestionIcon,
   Receipt,
+  Warning,
+  WarningCircle,
   WifiSlash,
+  X,
 } from '@phosphor-icons/react';
 import type {
   AnswerRevision,
@@ -53,6 +58,7 @@ import type {
 } from '@ask/contracts';
 import { ROUTES } from '@ask/contracts';
 import {
+  archiveQuestion,
   createRoom,
   getManifest,
   postContextRequest,
@@ -169,7 +175,8 @@ function groupByRepo(ordered: Question[]): Array<[string, Question[]]> {
 }
 
 export function Room({ identifier, onToast = noop }: Props) {
-  const { load, connection, pending, submitAnswer, setRoom, refresh } = useRoom(identifier);
+  const { load, connection, pending, submitAnswer, setRoom, patchQuestion, refresh } =
+    useRoom(identifier);
   const [tab, setTab] = useState<TabKey>('questions');
   const [drafts, setDrafts] = useState<Record<string, QuestionDraft>>({});
   const [checkoutNote, setCheckoutNote] = useState<string | undefined>();
@@ -178,6 +185,9 @@ export function Room({ identifier, onToast = noop }: Props) {
   const [focusIndex, setFocusIndex] = useState(0);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // which queued rows are open
   const [rescanning, setRescanning] = useState(false); // AI re-scan (§6) in flight
+  const [showArchived, setShowArchived] = useState(false); // archived-questions disclosure (§6)
+  const [archivingIds, setArchivingIds] = useState<Record<string, boolean>>({}); // in-flight archive/restore
+  const [crossRepoDismissed, setCrossRepoDismissed] = useState(false); // dismissible mixed-repo banner
   const setupPromptRef = useRef<string | null>(null);
   const [setupPrompt, setSetupPrompt] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false); // egg 4 — first-answer pulse
@@ -419,11 +429,21 @@ export function Room({ identifier, onToast = noop }: Props) {
   const connected = store.agents.length > 0;
   const accentHue = slugAccentHue(room.slug);
 
+  // Archived questions are kept out of the active Now/Next queue (§6); they live in a
+  // collapsed disclosure below. Everything else (open/answered) forms the active list.
   const open = store.questions.filter((q) => q.state === 'open' || q.state === 'answered');
   const ordered = orderQuestions(open);
+  const archivedQuestions = store.questions.filter((q) => q.state === 'archived');
   const latestAgent = [...store.agents].sort((a, b) =>
     (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''),
   )[0];
+
+  // Cross-repo warning (§28-ext): the room mixes questions from ≥2 distinct repos, OR
+  // mixes repo-stamped with un-repo'd questions (a connected folder that isn't a git repo).
+  // Computed over ALL non-archived questions so archiving a stray clears the banner.
+  const distinctRepos = new Set(open.map((q) => q.repo).filter((r): r is string => Boolean(r)));
+  const hasUnrepoed = open.some((q) => !q.repo);
+  const mixedRepos = distinctRepos.size >= 2 || (distinctRepos.size >= 1 && hasUnrepoed);
 
   const answeredIds = new Set(store.answers.map((a) => a.questionId));
   const unanswered = ordered.filter((q) => !answeredIds.has(q.id)).length;
@@ -471,12 +491,53 @@ export function Room({ identifier, onToast = noop }: Props) {
     }
   };
 
+  /**
+   * Owner archives (or restores) a question (§6). Optimistic: flip the question's state
+   * locally at once, call the server, then reconcile with the authoritative entity it
+   * returns; the DO also broadcasts `question.updated` so other clients follow. On
+   * failure, revert to the prior question and surface a toast.
+   */
+  const setArchived = async (q: Question, archived: boolean, reason?: string) => {
+    if (!room) return;
+    setArchivingIds((m) => ({ ...m, [q.id]: true }));
+    const previous = q;
+    // Optimistic local state flip (reason shown immediately when archiving).
+    patchQuestion({
+      ...q,
+      state: archived ? 'archived' : 'open',
+      archiveReason: archived ? (reason ?? q.archiveReason) : undefined,
+    });
+    try {
+      const updated = await archiveQuestion(room.id, q.id, archived);
+      patchQuestion(updated); // reconcile with the server's authoritative entity
+      onToast({ title: archived ? 'Question archived' : 'Question restored', variant: 'success' });
+    } catch {
+      patchQuestion(previous); // revert the optimistic change
+      onToast({
+        title: archived ? "Couldn't archive" : "Couldn't restore",
+        description: 'Try again in a moment.',
+        variant: 'error',
+      });
+    } finally {
+      setArchivingIds((m) => {
+        const next = { ...m };
+        delete next[q.id];
+        return next;
+      });
+    }
+  };
+
   const renderCard = (q: Question, compact = false, emphasis = false) => {
     // Subtle, non-noisy "could be sharper" hint — only for a still-open question the
     // AI flagged lame AND that carries a concrete suggestion (§6). Never for answered.
     const quality = qualityByQuestion.get(q.id);
     const showHint = Boolean(
       quality?.lame && quality.improvement.trim() && q.state === 'open' && !answerFor(q.id),
+    );
+    // Appropriateness/staleness warning (§6): the AI judges this OPEN question a poor
+    // fit for the project OR overtaken by events. Owner gets a one-tap Archive.
+    const showFitWarning = Boolean(
+      q.state === 'open' && quality && (quality.appropriate === false || quality.stale),
     );
     return (
       <div key={q.id} className="flex flex-col gap-1.5">
@@ -491,6 +552,14 @@ export function Room({ identifier, onToast = noop }: Props) {
           onSubmit={(value, text) => void handleSubmit(q, value, text)}
           onExplainMore={() => explainMore(q)}
         />
+        {showFitWarning ? (
+          <FitWarning
+            concern={quality!.concern}
+            canArchive={isOwner}
+            archiving={Boolean(archivingIds[q.id])}
+            onArchive={() => void setArchived(q, true, quality!.concern || undefined)}
+          />
+        ) : null}
         {showHint ? <SharperHint improvement={quality!.improvement} /> : null}
       </div>
     );
@@ -597,6 +666,34 @@ export function Room({ identifier, onToast = noop }: Props) {
               {connection === 'closed'
                 ? 'Connection lost — reconnecting…'
                 : 'Reconnecting to live updates…'}
+            </div>
+          ) : null}
+
+          {/* Cross-repo warning (§28-ext): questions span ≥2 repos, or mix repo'd +
+              un-repo'd. Dismissible, amber, near the top — nudges one git repo per page. */}
+          {mixedRepos && !crossRepoDismissed ? (
+            <div
+              role="status"
+              data-testid="cross-repo-warning"
+              className="flex items-start gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-2.5 text-sm text-amber-200"
+            >
+              <Warning size={16} weight="fill" className="mt-0.5 shrink-0" aria-hidden="true" />
+              <p className="min-w-0 flex-1 leading-relaxed">
+                Questions from multiple repositories are mixed on this page. Connect one git repo
+                per page (
+                <span className="ask-mono text-amber-100">ask.megabyte.space/owner/repo</span>) to
+                keep them separate.
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="square"
+                icon={X}
+                aria-label="Dismiss cross-repository warning"
+                data-testid="cross-repo-dismiss"
+                className="-mr-1 shrink-0"
+                onClick={() => setCrossRepoDismissed(true)}
+              />
             </div>
           ) : null}
         </div>
@@ -722,6 +819,18 @@ export function Room({ identifier, onToast = noop }: Props) {
                     renderOrderedList(ordered, true)}
               </div>
             )}
+
+            {/* Archived questions (§6) — collapsed disclosure below the active list. */}
+            <div className="mt-4">
+              <ArchivedSection
+                questions={archivedQuestions}
+                open={showArchived}
+                onToggle={() => setShowArchived((v) => !v)}
+                canRestore={isOwner}
+                archivingIds={archivingIds}
+                onRestore={(q) => void setArchived(q, false)}
+              />
+            </div>
           </div>
         ) : null}
 
@@ -1073,6 +1182,134 @@ function RepoGroupHeader({ repo, count }: { repo: string; count: number }) {
         {count}
       </span>
     </div>
+  );
+}
+
+/** FitWarning — a subtle amber note under an OPEN question the AI flags as a poor fit
+ *  for the project or overtaken by events (§6): "May not fit your project" + the concern.
+ *  The owner gets a one-tap Archive; non-owners just see the note. Amber (not red) +
+ *  AA-contrast text; the action is a real keyboard-operable button. */
+function FitWarning({
+  concern,
+  canArchive,
+  archiving,
+  onArchive,
+}: {
+  concern: string;
+  canArchive: boolean;
+  archiving: boolean;
+  onArchive: () => void;
+}) {
+  return (
+    <div
+      role="note"
+      data-testid="question-fit-warning"
+      className="ask-enter ml-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2.5 py-1.5 text-[0.78rem] leading-snug text-amber-200"
+    >
+      <span className="inline-flex items-start gap-1.5">
+        <Warning size={13} weight="fill" className="mt-0.5 shrink-0" aria-hidden="true" />
+        <span>
+          <span className="font-semibold">May not fit your project.</span>
+          {concern ? <span className="text-amber-200/85"> {concern}</span> : null}
+        </span>
+      </span>
+      {canArchive ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={Archive}
+          loading={archiving}
+          disabled={archiving}
+          data-testid="question-archive"
+          className="ml-auto"
+          onClick={onArchive}
+        >
+          Archive
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** ArchivedSection — a collapsed "Archived (N)" disclosure below the active list (§6).
+ *  Each row shows the question title + its `archiveReason`; the owner can Restore it
+ *  (optimistic; the live WS reconciles). Starts collapsed so it never competes with the
+ *  active queue. Keyboard-operable: the summary toggles, each Restore is a real button. */
+function ArchivedSection({
+  questions,
+  open,
+  onToggle,
+  canRestore,
+  archivingIds,
+  onRestore,
+}: {
+  questions: Question[];
+  open: boolean;
+  onToggle: () => void;
+  canRestore: boolean;
+  archivingIds: Record<string, boolean>;
+  onRestore: (q: Question) => void;
+}) {
+  if (questions.length === 0) return null;
+  return (
+    <section data-zen-hide data-testid="archived-section" className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        data-testid="archived-toggle"
+        className="group flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm text-white/60 hover:text-white/85"
+      >
+        <CaretRight
+          size={14}
+          className={['shrink-0 transition-transform', open ? 'rotate-90' : ''].join(' ')}
+          aria-hidden="true"
+        />
+        <Archive size={14} className="shrink-0" aria-hidden="true" />
+        <span className="ask-mono text-[0.72rem] font-semibold uppercase tracking-wider">
+          Archived · {questions.length}
+        </span>
+      </button>
+      {open ? (
+        <ul className="flex flex-col gap-2">
+          {questions.map((q) => (
+            <li
+              key={q.id}
+              data-testid="archived-question"
+              className="ask-enter flex items-start gap-3 rounded-xl border border-white/10 bg-[#0b0b18]/50 px-4 py-3"
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[0.9rem] font-medium text-white/80">{q.title}</span>
+                {q.archiveReason ? (
+                  <span className="flex items-start gap-1.5 text-[0.78rem] leading-snug text-white/55">
+                    <WarningCircle
+                      size={12}
+                      className="mt-0.5 shrink-0 text-amber-300/80"
+                      aria-hidden="true"
+                    />
+                    {q.archiveReason}
+                  </span>
+                ) : null}
+              </div>
+              {canRestore ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={ArrowCounterClockwise}
+                  loading={Boolean(archivingIds[q.id])}
+                  disabled={Boolean(archivingIds[q.id])}
+                  data-testid="question-restore"
+                  className="shrink-0"
+                  onClick={() => onRestore(q)}
+                >
+                  Restore
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

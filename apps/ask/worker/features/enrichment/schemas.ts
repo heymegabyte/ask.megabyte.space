@@ -18,6 +18,12 @@ export const AiQuestionVerdict = z.object({
   lame: z.boolean(),
   /** May be empty/omitted when not lame. */
   improvement: z.string().max(600).optional().default(''),
+  /** Does the question fit the project's apparent stack/domain? Default true (don't over-archive). */
+  appropriate: z.boolean().optional().default(true),
+  /** Overtaken by events / no longer worth answering? */
+  stale: z.boolean().optional().default(false),
+  /** Short reason it's inappropriate or stale (becomes the archive reason). */
+  concern: z.string().max(600).optional().default(''),
 });
 export type AiQuestionVerdict = z.infer<typeof AiQuestionVerdict>;
 

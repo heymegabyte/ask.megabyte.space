@@ -156,7 +156,14 @@ export type QuestionClass = z.infer<typeof QuestionClass>;
 export const Horizon = z.enum(['now', 'next', 'later']);
 export type Horizon = z.infer<typeof Horizon>;
 
-export const QuestionState = z.enum(['open', 'answered', 'dismissed', 'superseded']);
+export const QuestionState = z.enum([
+  'open',
+  'answered',
+  'dismissed',
+  'superseded',
+  // Archived: no longer needs answering — stale, or inappropriate for the project (§6).
+  'archived',
+]);
 export type QuestionState = z.infer<typeof QuestionState>;
 
 /** Answer lifecycle status with required evidence (§5). */
@@ -328,6 +335,8 @@ export const Question = z.object({
   relevantTask: z.string().max(200).optional(),
   /** Source git repo (owner/name), stamped server-side from the posting agent (§28-ext). */
   repo: RepoSlug.optional(),
+  /** Why this question was archived — AI appropriateness/staleness verdict or owner action (§6). */
+  archiveReason: z.string().max(400).optional(),
   state: QuestionState.default('open'),
   revision: z.number().int().nonnegative(),
   createdByInstall: InstallId.optional(),
@@ -466,6 +475,12 @@ export const QuestionQuality = z.object({
   lame: z.boolean(),
   /** One short, actionable suggestion to sharpen it (shown only when lame). */
   improvement: z.string().max(400),
+  /** Does the question FIT the project's apparent stack/domain? (§6 appropriateness). */
+  appropriate: z.boolean().default(true),
+  /** True when the question is overtaken by events / no longer needs answering. */
+  stale: z.boolean().default(false),
+  /** Why it's inappropriate or stale — shown to the user + used as the archive reason. */
+  concern: z.string().max(400).default(''),
   updatedAt: Iso,
 });
 export type QuestionQuality = z.infer<typeof QuestionQuality>;
@@ -687,6 +702,8 @@ export const ROUTES = {
   events: (id: string) => `/api/${API_VERSION}/rooms/${id}/events`,
   meRooms: `/api/${API_VERSION}/me/rooms`,
   resolveRepo: (owner: string, repo: string) => `/api/${API_VERSION}/repos/${owner}/${repo}`,
+  archiveQuestion: (id: string, qid: string) =>
+    `/api/${API_VERSION}/rooms/${id}/questions/${qid}/archive`,
   stripeWebhook: '/api/billing/stripe/webhook',
   manifest: '/integrations/manifest.json',
   health: '/api/health',

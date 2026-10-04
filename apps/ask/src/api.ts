@@ -24,6 +24,8 @@ import {
   type PostAnswerResponse,
   PostAnswerResponse as PostAnswerResponseSchema,
   type ProjectUnderstanding,
+  type Question,
+  Question as QuestionSchema,
   type QuestionQuality,
   type RepoSlug,
   type ResolveRepoResponse,
@@ -208,6 +210,24 @@ export async function resolveRepo(
 }
 
 /**
+ * POST /rooms/<id>/questions/<qid>/archive — owner archives (or restores) a question
+ * (§6). `archived:true` moves it out of the active queue with an AI/owner reason;
+ * `archived:false` restores it. Same-origin cookie carries ownership; returns the
+ * updated question. The DO also broadcasts `question.updated` so live clients reconcile.
+ */
+export async function archiveQuestion(
+  roomId: string,
+  questionId: string,
+  archived: boolean,
+): Promise<Question> {
+  return request(
+    ROUTES.archiveQuestion(roomId, questionId),
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ archived }) },
+    (d) => QuestionSchema.parse((d as { question: unknown }).question),
+  );
+}
+
+/**
  * POST /rooms/<id>/enrich — owner-only manual re-scan (§6). Returns the fresh
  * AI read + question-quality, or `{ ran:false, reason }` when enrichment is off,
  * the AI binding is absent, there's nothing to analyze, or the budget is spent.
@@ -236,6 +256,7 @@ export type {
   MeRoom,
   MeRoomsResponse,
   ProjectUnderstanding,
+  Question,
   QuestionQuality,
   RepoSlug,
   ResolveRepoResponse,

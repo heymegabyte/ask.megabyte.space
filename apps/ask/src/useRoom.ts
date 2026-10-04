@@ -81,7 +81,8 @@ type Action =
   | { type: 'answer_pending'; pending: PendingAnswer }
   | { type: 'answer_committed'; questionId: string; answer: AnswerRevision }
   | { type: 'answer_error'; questionId: string; message: string }
-  | { type: 'answer_clear'; questionId: string };
+  | { type: 'answer_clear'; questionId: string }
+  | { type: 'patch_question'; question: Question };
 
 function snapshotToStore(s: RoomSnapshot): RoomStore {
   return {
@@ -195,6 +196,21 @@ function reducer(state: State, action: Action): State {
         load: { status: 'ready', store: { ...state.load.store, room: action.room } },
       };
     }
+    case 'patch_question': {
+      // Optimistic local upsert of a question (e.g. archive/restore). The server's
+      // `question.updated` WS event later reconciles with the authoritative entity.
+      if (state.load.status !== 'ready') return state;
+      return {
+        ...state,
+        load: {
+          status: 'ready',
+          store: {
+            ...state.load.store,
+            questions: upsert(state.load.store.questions, action.question),
+          },
+        },
+      };
+    }
     case 'connection':
       return { ...state, connection: action.state };
     case 'answer_pending':
@@ -251,6 +267,8 @@ export interface UseRoom {
   ) => Promise<boolean>;
   /** Patch the room locally (e.g. after an owner rename succeeds). */
   setRoom: (room: Room) => void;
+  /** Optimistically upsert a question locally (archive/restore); WS reconciles. */
+  patchQuestion: (question: Question) => void;
   /** Force a fresh snapshot (used after reconnect / snapshotRequired). */
   refresh: () => Promise<void>;
 }
@@ -414,6 +432,10 @@ export function useRoom(identifier: string): UseRoom {
   );
 
   const setRoom = useCallback((room: Room) => dispatch({ type: 'room', room }), []);
+  const patchQuestion = useCallback(
+    (question: Question) => dispatch({ type: 'patch_question', question }),
+    [],
+  );
 
   return useMemo(
     () => ({
@@ -422,8 +444,9 @@ export function useRoom(identifier: string): UseRoom {
       pending: state.pending,
       submitAnswer,
       setRoom,
+      patchQuestion,
       refresh,
     }),
-    [state.load, state.connection, state.pending, submitAnswer, setRoom, refresh],
+    [state.load, state.connection, state.pending, submitAnswer, setRoom, patchQuestion, refresh],
   );
 }

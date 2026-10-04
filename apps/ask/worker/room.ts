@@ -320,6 +320,33 @@ export class RoomDurableObject extends DurableObject<Env> {
     return answer;
   }
 
+  /** Owner archive/restore of a question (open ↔ archived). Never touches answered questions (§6). */
+  async setQuestionArchived(questionId: string, archived: boolean): Promise<Question | null> {
+    const row = this.rows('SELECT data FROM questions WHERE id = ?', questionId)[0];
+    if (!row) return null; // worker maps null → 404 (avoid throwing across the JSRPC boundary)
+    const question = JSON.parse(row.data) as Question;
+    if (archived && question.state === 'open') {
+      question.state = 'archived';
+      question.archiveReason = question.archiveReason || 'Archived by the page owner.';
+    } else if (!archived && question.state === 'archived') {
+      question.state = 'open';
+      question.archiveReason = undefined;
+    } else {
+      return question; // no-op: answered/superseded, or already in the target state
+    }
+    question.updatedAt = now();
+    this.sql.exec(
+      'UPDATE questions SET state = ?, updated_at = ?, data = ? WHERE id = ?',
+      question.state,
+      question.updatedAt,
+      JSON.stringify(question),
+      question.id,
+    );
+    this.append('question.updated', question.revision, { question });
+    this.scheduleEnrichment();
+    return question;
+  }
+
   async enrollAgent(
     input: Omit<AgentInstallation, 'id' | 'status' | 'trust'>,
   ): Promise<EnrollAgentResponse> {
@@ -560,6 +587,29 @@ export class RoomDurableObject extends DurableObject<Env> {
         JSON.stringify(q),
         q.updatedAt,
       );
+    }
+    // Appropriateness + staleness → auto-archive the OPEN questions the AI flagged, so a question
+    // that doesn't fit the project (React in an Angular repo) or is overtaken by events stops being
+    // asked. Answered/already-archived questions are never touched (§6).
+    for (const q of result.questionQuality) {
+      if (q.appropriate && !q.stale) continue;
+      const row = this.rows('SELECT data FROM questions WHERE id = ?', q.questionId)[0];
+      if (!row) continue;
+      const question = JSON.parse(row.data) as Question;
+      if (question.state !== 'open') continue;
+      question.state = 'archived';
+      question.archiveReason =
+        q.concern || (!q.appropriate ? 'Does not fit the project.' : 'No longer needs answering.');
+      question.updatedAt = now();
+      this.sql.exec(
+        'UPDATE questions SET state = ?, updated_at = ?, data = ? WHERE id = ?',
+        'archived',
+        question.updatedAt,
+        JSON.stringify(question),
+        question.id,
+      );
+      this.sql.exec('DELETE FROM question_quality WHERE question_id = ?', question.id);
+      this.append('question.updated', question.revision, { question });
     }
     // Tell live clients to refresh (they GET /changes → re-snapshot the enrichment fields).
     this.append('enrichment.updated', 0, {
