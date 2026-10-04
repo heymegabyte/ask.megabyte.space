@@ -51,7 +51,6 @@ for (const [f, s] of Object.entries(icons)) {
       right: Math.round(s * 0.08),
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     })
-    .flatten({ background: '#060610' })
     .resize(s, s)
     .png()
     .toFile(f);
