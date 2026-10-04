@@ -1,0 +1,7 @@
+# Machine-generated / build output — never Prettier-formatted.
+pnpm-lock.yaml
+dist/
+**/dist/
+.wrangler/
+**/.wrangler/
+.playwright-mcp/
