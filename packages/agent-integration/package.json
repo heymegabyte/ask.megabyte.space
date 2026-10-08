@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Portable, host-agnostic agent integration for Ask (fuegol.ink): a universal skill, a zero-dependency Node helper, and per-host adapters. No runtime deps.",
+  "description": "Portable, host-agnostic agent integration for Ask (questionl.ink): a universal skill, a zero-dependency Node helper, and per-host adapters. No runtime deps.",
   "license": "MIT",
-  "homepage": "https://fuegol.ink",
+  "homepage": "https://questionl.ink",
   "repository": {
     "type": "git",
-    "url": "https://github.com/heymegabyte/fuegol.ink.git",
+    "url": "https://github.com/heymegabyte/questionl.ink.git",
     "directory": "packages/agent-integration"
   },
   "engines": {

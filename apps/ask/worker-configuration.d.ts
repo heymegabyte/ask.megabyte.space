@@ -5,7 +5,7 @@ interface __BaseEnv_Env {
   DB: D1Database;
   AI: Ai;
   ASSETS: Fetcher;
-  SERVICE_ORIGIN: 'https://fuegol.ink';
+  SERVICE_ORIGIN: 'https://questionl.ink';
   SHARED_AUTH_ISSUER: 'https://projectsites.dev';
   BILLING_GRACE_DAYS: '7';
   ENRICHMENT_ENABLED: '1';

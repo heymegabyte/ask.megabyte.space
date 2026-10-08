@@ -16,7 +16,7 @@
   "compatibility_date": "2025-02-04",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "SERVICE_ORIGIN": "https://fuegol.ink",
+    "SERVICE_ORIGIN": "https://questionl.ink",
     "SHARED_AUTH_ISSUER": "https://projectsites.dev",
     "BILLING_GRACE_DAYS": "7",
   },

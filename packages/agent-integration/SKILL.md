@@ -2,7 +2,7 @@
 name: ask-project
 description: >-
   Keep a coding project aligned with the answers humans gave on its Ask room
-  (fuegol.ink). Use when a repo contains a `.ask/project.json`, when the
+  (questionl.ink). Use when a repo contains a `.ask/project.json`, when the
   user says "sync Ask", "connect to Ask", "check the Ask room", "what did they
   answer", "pull project decisions", or when starting/resuming work on a project
   that has an Ask room. Retrieves newly-answered questions, folds decisions into
@@ -14,7 +14,7 @@ metadata:
   protocol: 1
   apiVersion: v1
   helper: .ask/bin/ask.mjs
-  homepage: https://fuegol.ink
+  homepage: https://questionl.ink
   owner: ask-project
 ---
 
