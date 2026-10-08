@@ -71,6 +71,7 @@ import { buildSetupPrompt } from './setupPrompt';
 import { agentStatusChip, answerStatusChip } from './status';
 import { recordRecentPage } from './recentPages';
 import { RoomHeader } from './components/RoomHeader';
+import { GetStartedPrompts } from './components/GetStartedPrompts';
 import { ProjectUnderstanding } from './ProjectUnderstanding';
 import { QuestionCard, emptyDraft, type QuestionDraft } from './components/QuestionCard';
 import { useZenMode } from './eggs';
@@ -647,6 +648,10 @@ export function Room({ identifier, onToast = noop }: Props) {
             onCopySetupPrompt={() => void copySetupPrompt()}
           />
 
+          {/* Both get-started prompts (repo-scoped + global) right on the room, so the
+              owner can wire a new agent/repo or make Ask permanent without leaving (§22). */}
+          <SetupPromptsSection room={room} connected={connected} onToast={onToast} />
+
           {/* AI read of the project (§6) — renders only once there's a real summary.
               Owner gets a quiet re-scan; it updates live as answers arrive. */}
           <ProjectUnderstanding
@@ -1105,6 +1110,48 @@ function ConnectionPanel({
       >
         Setup prompt
       </Button>
+    </section>
+  );
+}
+
+/**
+ * Both get-started prompts on the room page (§22, §28-ext): "set up this project"
+ * (repo-scoped) + "add Ask to my skills & CLAUDE.md" (global) — the same pair the
+ * dashboard offers, so the owner can wire a new agent/repo or make Ask permanent from
+ * the room itself. Open by default until an agent has connected, then a tidy disclosure.
+ */
+function SetupPromptsSection({
+  room,
+  connected,
+  onToast,
+}: {
+  room: Room;
+  connected: boolean;
+  onToast: (t: ToastInput) => void;
+}) {
+  // Collapsed by default — the ConnectionPanel already leads setup; this is the
+  // "make it stick / set up another project" secondary action, one click away.
+  const [open, setOpen] = useState(false);
+  return (
+    <section data-testid="setup-prompts" className="flex flex-col gap-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        data-testid="setup-prompts-toggle"
+        onClick={() => setOpen((o) => !o)}
+        className="group flex items-center gap-1.5 self-start rounded-lg text-sm font-medium text-white/70 transition-colors hover:text-white focus-visible:text-white focus-visible:outline-none"
+      >
+        <CaretRight
+          size={14}
+          weight="bold"
+          className={['shrink-0 transition-transform', open ? 'rotate-90' : ''].join(' ')}
+          aria-hidden="true"
+        />
+        {connected
+          ? 'Set up another project — copy a prompt'
+          : 'Make Ask stick — copy a setup prompt'}
+      </button>
+      {open ? <GetStartedPrompts room={room} onToast={onToast} /> : null}
     </section>
   );
 }

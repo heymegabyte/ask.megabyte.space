@@ -30,24 +30,24 @@ function collectConsoleErrors(page: Page): string[] {
 }
 
 test.describe('golden path', () => {
-  test('entry at / auto-creates a room, adopts /<slug>, shows copy-setup-prompt, 0 console errors', async ({
+  test('entry at / shows the personal dashboard with BOTH get-started prompts, 0 console errors', async ({
     page,
   }) => {
     const errors = collectConsoleErrors(page);
     await page.goto('/');
-    // The homepage immediately provisions a room and swaps the URL to its slug.
-    await expect
-      .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
-      .toMatch(/^\/[a-z]+(?:-[a-z0-9]+)+$/);
-    await shot(page, 'entry', '1-room-adopted');
+    // Apex is a personal dashboard (§28-ext), not auto-create. A fresh principal lands
+    // on the zero-state: the hero + New page CTA + the two copyable get-started prompts.
+    await expect(page.getByRole('button', { name: /new page/i }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    await shot(page, 'entry', '1-dashboard');
 
-    // The empty-state launchpad leads with the setup-prompt CTA.
-    const copyPrompt = page.getByTestId('copy-setup-prompt');
-    await expect(copyPrompt).toBeVisible();
-    await copyPrompt.click();
-    // Clicking reveals the generated prompt text block.
-    await expect(page.locator('pre')).toBeVisible();
-    await shot(page, 'entry', '2-setup-prompt');
+    // Both get-started prompts (project-scoped + global) are present and copyable.
+    await expect(page.getByTestId('prompt-project')).toBeVisible();
+    await expect(page.getByTestId('prompt-global')).toBeVisible();
+    await expect(page.getByTestId('prompt-project-copy')).toBeEnabled();
+    await expect(page.getByTestId('prompt-global-copy')).toBeEnabled();
+    await shot(page, 'entry', '2-get-started-prompts');
 
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
