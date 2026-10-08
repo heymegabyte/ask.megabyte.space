@@ -268,6 +268,40 @@ async function main() {
   });
   ok(co.status === 501, 'checkout → honest 501 (billing not configured)');
 
+  // 19. complete identity set — favicon.ico + vector mark + enriched manifest (the floor)
+  const ico = await fetch(`${BASE}/favicon.ico`);
+  ok(
+    ico.status === 200 && (ico.headers.get('content-type') || '').includes('icon'),
+    'favicon.ico 200 (multi-res ICO)',
+  );
+  const svg = await fetch(`${BASE}/logo-mark.svg`);
+  ok(
+    svg.status === 200 && (svg.headers.get('content-type') || '').includes('svg'),
+    'logo-mark.svg 200 (scalable vector mark)',
+  );
+  ok((await fetch(`${BASE}/mask-icon.svg`)).status === 200, 'mask-icon.svg 200 (Safari pinned tab)');
+  const manj = await (await fetch(`${BASE}/site.webmanifest`)).json();
+  ok(
+    Array.isArray(manj.screenshots) && manj.screenshots.length >= 2 && Array.isArray(manj.shortcuts),
+    'manifest complete (screenshots + shortcuts)',
+  );
+  ok((manj.icons || []).some((i) => i.purpose === 'maskable'), 'manifest has a maskable icon');
+
+  // 20. dynamic per-room OG card (edge-rendered) + HTMLRewriter meta injection
+  const curSlug = `${slug}-renamed`;
+  const og = await fetch(`${BASE}/og/${curSlug}.png`);
+  ok(
+    og.status === 200 && (og.headers.get('content-type') || '').includes('image/png'),
+    'GET /og/:slug.png → 200 image/png (edge-rendered card)',
+  );
+  const roomHtml = await (await fetch(`${BASE}/${curSlug}`)).text();
+  ok(roomHtml.includes(`/og/${curSlug}.png`), 'room page: per-room og:image injected (HTMLRewriter)');
+  ok(roomHtml.includes(`ask/${curSlug} — Ask`), 'room page: per-room og:title injected');
+  ok(
+    !html.includes(`/og/${curSlug}.png`),
+    'root / keeps the DEFAULT OG card (injection scoped to rooms)',
+  );
+
   for (const ws of sockets) {
     try {
       ws.close();
