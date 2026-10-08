@@ -171,10 +171,7 @@ export function RoomHeader({
     <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/10 bg-[#060610]/85 px-4 py-3 backdrop-blur-md sm:px-6">
       {/* Brand logo — icon always, high-weight wordmark on sm+ (room bar is dense). */}
       <a href="/" aria-label="Ask — home" className="flex shrink-0 items-center">
-        <AskLogo
-          markClassName="h-10 w-10 shrink-0 [filter:drop-shadow(0_0_7px_rgba(0,229,255,0.4))]"
-          textClassName="hidden text-[1.4rem] font-bold leading-none tracking-tight text-white [font-family:var(--font-heading)] sm:inline"
-        />
+        <AskLogo markClassName="h-10 w-10" lockupClassName="h-9" />
       </a>
       <span className="hidden h-5 w-px shrink-0 bg-white/15 sm:block" aria-hidden="true" />
 

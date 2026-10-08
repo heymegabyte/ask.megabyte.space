@@ -1,17 +1,20 @@
 /**
  * AskLogo — the Ask brand mark.
  *
- * The mark is a generated (Cloudflare Workers AI / flux image model) gradient
- * rounded-diamond speech bubble with a knocked-out question mark, processed to a
- * TRANSPARENT PNG (`/logo-mark.png` via scripts/process-logo.mjs) so its "?" +
- * background show the page behind it on the dark surface. `<AskMark>` is the icon
- * alone; `<AskLogo>` locks it up with the "ask" wordmark in the brand display face
- * (Space Grotesk, high weight) to the right of the icon.
+ * An Ideogram-V3 (DESIGN) generated gradient speech bubble with a knocked-out
+ * question mark, luminance-keyed to a TRANSPARENT PNG so its "?" + field show the
+ * dark surface through it (scripts/gen-logo.mjs → scripts/process-logo.mjs). Two
+ * shipped assets:
+ *   • /logo-mark.png   — the icon alone (square) → favicon/PWA + compact/mobile.
+ *   • /logo-lockup.png — icon + baked "ask" wordmark (Ideogram-rendered) → navbar sm+.
+ * <AskMark> is the icon; <AskLogo> shows the icon below `sm` and the full lockup above.
  */
 interface MarkProps {
   className?: string;
   title?: string;
 }
+
+const GLOW = '[filter:drop-shadow(0_0_8px_rgba(0,229,255,0.4))]';
 
 /** The icon mark alone (square). Size it via className (e.g. `h-12 w-12`). */
 export function AskMark({ className, title = 'Ask' }: MarkProps) {
@@ -29,30 +32,36 @@ export function AskMark({ className, title = 'Ask' }: MarkProps) {
 
 interface LogoProps {
   className?: string;
+  /** Icon size for the mobile / compact rendering (e.g. `h-10 w-10`). */
   markClassName?: string;
-  textClassName?: string;
+  /** Lockup height for the sm+ rendering (e.g. `h-9`). */
+  lockupClassName?: string;
+  /** Force icon-only — never the wordmark lockup. */
+  compact?: boolean;
 }
 
 /**
- * Icon + "ask" wordmark lockup — the brand home affordance. The wordmark uses the
- * brand display face at high weight, to the right of the icon, per logo-contrast.
+ * Brand home affordance. Icon-only below `sm` (dense bars) and the full baked
+ * icon+"ask" lockup from `sm` up — the wordmark is rendered into the logo itself
+ * (Ideogram), per the brand's text-in-logo direction.
  */
-export function AskLogo({ className, markClassName, textClassName }: LogoProps) {
-  return (
-    <span className={`inline-flex items-center gap-2.5 ${className ?? ''}`}>
-      <AskMark
-        className={
-          markClassName ?? 'h-11 w-11 shrink-0 [filter:drop-shadow(0_0_8px_rgba(0,229,255,0.4))]'
-        }
-      />
-      <span
-        className={
-          textClassName ??
-          'font-bold leading-none tracking-tight text-white [font-family:var(--font-heading)] text-[clamp(1.3rem,4.5vw,1.6rem)]'
-        }
-      >
-        ask
+export function AskLogo({ className, markClassName, lockupClassName, compact }: LogoProps) {
+  if (compact) {
+    return (
+      <span className={`inline-flex items-center ${className ?? ''}`}>
+        <AskMark className={`${markClassName ?? 'h-10 w-10'} shrink-0 ${GLOW}`} />
       </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center ${className ?? ''}`}>
+      <AskMark className={`${markClassName ?? 'h-10 w-10'} shrink-0 sm:hidden ${GLOW}`} />
+      <img
+        src="/logo-lockup.png"
+        alt="Ask"
+        decoding="async"
+        className={`hidden w-auto object-contain sm:block ${lockupClassName ?? 'h-9'} ${GLOW}`}
+      />
     </span>
   );
 }

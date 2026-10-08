@@ -1,13 +1,16 @@
 /**
- * gen-logo.mjs — generate logo candidates via Cloudflare Workers AI image models
- * (CF-native, billed through Cloudflare — the working path when Ideogram's own key
- * is unavailable; Ideogram-via-AI-Gateway needs a valid Ideogram `Api-Key`). Writes
- * each candidate PNG + one horizontal CONTACT SHEET so an AI-vision pass can pick the
- * best from a single image. Used by the logo-generation recursive-refinement loop.
+ * gen-logo.mjs — generate logo candidates. Ideogram V3 (DESIGN) is the PRIMARY
+ * generator (crisp vector marks + legible baked text — its signature strength);
+ * Cloudflare Workers AI (flux) is the FALLBACK when no Ideogram key is funded.
+ * Writes each candidate PNG + one horizontal CONTACT SHEET so an AI-vision pass can
+ * pick the best from a single image. Drives the logo-generation refinement loop.
  *
- * Env: CF_ACCOUNT_ID, CLOUDFLARE_EMAIL, CLOUDFLARE_API_KEY (global key), optional
- *      LOGO_MODEL (default flux-1-schnell), OUT_TAG (sheet suffix).
- * Usage: node scripts/gen-logo.mjs <prompts.json>   (prompts.json = array of strings)
+ * Provider: uses Ideogram when IDEOGRAM_API_KEY is set (override with
+ *   LOGO_PROVIDER=flux to force the CF path, or =ideogram to require it).
+ * Env: IDEOGRAM_API_KEY (primary) · CF_ACCOUNT_ID + CLOUDFLARE_EMAIL +
+ *      CLOUDFLARE_API_KEY (fallback) · LOGO_MODEL (flux model) · OUT_TAG (sheet suffix).
+ * Input: a JSON array of strings OR {prompt, aspect} objects (aspect e.g. "1x1","3x1").
+ * Usage: node scripts/gen-logo.mjs <prompts.json>
  */
 import sharp from 'sharp';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -15,21 +18,59 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const ACCT = process.env.CF_ACCOUNT_ID;
 const EMAIL = process.env.CLOUDFLARE_EMAIL;
 const KEY = process.env.CLOUDFLARE_API_KEY;
+const IDEO = process.env.IDEOGRAM_API_KEY;
+const FORCE = process.env.LOGO_PROVIDER; // 'ideogram' | 'flux' | undefined
 const MODEL = process.env.LOGO_MODEL || '@cf/black-forest-labs/flux-1-schnell';
 const TAG = process.env.OUT_TAG || 'r1';
-const prompts = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-const CELL = 300;
+const raw = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const items = raw.map((x) => (typeof x === 'string' ? { prompt: x } : x));
+const useIdeogram = FORCE === 'ideogram' || (!!IDEO && FORCE !== 'flux');
+const CELL = 320;
 
-async function gen(prompt, i) {
+/** Ideogram V3 generate (multipart). DESIGN style, QUALITY speed, no magic-prompt drift. */
+async function genIdeogram(prompt, aspect, i) {
   try {
-    const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${ACCT}/ai/run/${MODEL}`,
-      {
-        method: 'POST',
-        headers: { 'X-Auth-Email': EMAIL, 'X-Auth-Key': KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, steps: 8 }),
-      },
-    );
+    const fd = new FormData();
+    fd.append('prompt', prompt);
+    fd.append('aspect_ratio', aspect || '1x1');
+    fd.append('rendering_speed', 'QUALITY');
+    fd.append('style_type', 'DESIGN');
+    fd.append('magic_prompt', 'OFF');
+    fd.append('num_images', '1');
+    const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+      method: 'POST',
+      headers: { 'Api-Key': IDEO },
+      body: fd,
+    });
+    if (!res.ok) {
+      console.error(`#${i} ideogram ${res.status}:`, (await res.text()).slice(0, 220));
+      return null;
+    }
+    const j = await res.json();
+    const url = j?.data?.[0]?.url;
+    if (!url) {
+      console.error(`#${i} ideogram no url:`, JSON.stringify(j).slice(0, 180));
+      return null;
+    }
+    const img = await fetch(url);
+    const buf = Buffer.from(await img.arrayBuffer());
+    const f = `/tmp/logo_${TAG}_${i}.png`;
+    await sharp(buf).png().toFile(f);
+    return { f, i };
+  } catch (e) {
+    console.error(`#${i} ideogram err:`, String(e).slice(0, 140));
+    return null;
+  }
+}
+
+/** Cloudflare Workers AI (flux) fallback. */
+async function genFlux(prompt, i) {
+  try {
+    const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCT}/ai/run/${MODEL}`, {
+      method: 'POST',
+      headers: { 'X-Auth-Email': EMAIL, 'X-Auth-Key': KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, steps: 8 }),
+    });
     const ct = res.headers.get('content-type') || '';
     let buf;
     if (ct.includes('json')) {
@@ -53,8 +94,9 @@ async function gen(prompt, i) {
 }
 
 const out = [];
-for (let i = 0; i < prompts.length; i++) {
-  const r = await gen(prompts[i], i);
+for (let i = 0; i < items.length; i++) {
+  const { prompt, aspect } = items[i];
+  const r = useIdeogram ? await genIdeogram(prompt, aspect, i) : await genFlux(prompt, i);
   if (r) out.push(r);
 }
 
@@ -83,4 +125,4 @@ if (tiles.length) {
     .toBuffer();
   writeFileSync(`/tmp/logo_sheet_${TAG}.png`, sheet);
 }
-console.log(`generated ${out.length}/${prompts.length} → /tmp/logo_sheet_${TAG}.png`);
+console.log(`[${useIdeogram ? 'ideogram' : 'flux'}] generated ${out.length}/${items.length} → /tmp/logo_sheet_${TAG}.png`);
