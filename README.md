@@ -7,12 +7,12 @@ their coding agents publish. An agent posts a batch of questions to a room; you 
 URL and answer; the agent reads your answers and records what it applied. No account needed to
 answer a public room.
 
-- Live: <https://ask.megabyte.space>
+- Live: <https://fuegol.ink>
 - MIT licensed · Cloudflare-native · self-hostable
 
 ## How it works
 
-1. Your coding agent **enrolls** in a room (a memorable URL like `ask.megabyte.space/amber-harbor`).
+1. Your coding agent **enrolls** in a room (a memorable URL like `fuegol.ink/amber-harbor`).
 2. It **publishes questions** — choices, text, numbers, links, image comparisons — each with
    context, the consequence of each answer, and an optional recommendation.
 3. You **open the room and answer**. Updates are live; no sign-in for a public room.
@@ -24,7 +24,7 @@ answer a public room.
 - **Public rooms are free, forever.** Public means unlisted-and-shareable — anyone with the link
   can view and answer, but nothing is ever indexed by search engines.
 - **Private rooms are USD $10/month per page** on the hosted service — only you can read them.
-  This is a billing policy of ask.megabyte.space, not a code paywall. A lapse never makes a
+  This is a billing policy of fuegol.ink, not a code paywall. A lapse never makes a
   private room public (7-day grace, then private read-only). _(Private rooms + billing are
   Increment 3 — see the roadmap.)_
 
@@ -35,8 +35,8 @@ capability of the software, not a hosted paywall. The hosted $10/month buys conv
 feature you can't get otherwise.
 
 ```sh
-git clone https://github.com/heymegabyte/ask.megabyte.space.git
-cd ask.megabyte.space && pnpm install
+git clone https://github.com/heymegabyte/fuegol.ink.git
+cd fuegol.ink && pnpm install
 # set your D1 id + SERVICE_ORIGIN in apps/ask/wrangler.jsonc, then:
 pnpm build && pnpm --filter @ask/app deploy
 ```

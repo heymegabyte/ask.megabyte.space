@@ -3,7 +3,7 @@
 Ask is MIT licensed and self-hostable on your own Cloudflare account. **Self-hosting includes
 private rooms with no Ask subscription** — privacy is a capability of the software, not a hosted
 paywall (see `decisions/0001-license-mit.md`). The $10/month charge is a policy of the hosted
-service at ask.megabyte.space only.
+service at fuegol.ink only.
 
 ## What you need
 
@@ -17,8 +17,8 @@ service at ask.megabyte.space only.
 1. **Clone + install**
 
    ```sh
-   git clone https://github.com/heymegabyte/ask.megabyte.space.git
-   cd ask.megabyte.space
+   git clone https://github.com/heymegabyte/fuegol.ink.git
+   cd fuegol.ink
    pnpm install
    ```
 

@@ -61,7 +61,7 @@ function roomUrlFor(room: RoomLike): string {
   const origin =
     typeof window !== 'undefined' && window.location
       ? window.location.origin
-      : 'https://ask.megabyte.space';
+      : 'https://fuegol.ink';
   // MeRoom/ResolveRepoResponse carry a `url`; a bare Room carries just a `slug`.
   if ('url' in room && typeof room.url === 'string' && room.url) {
     return room.url.startsWith('http')

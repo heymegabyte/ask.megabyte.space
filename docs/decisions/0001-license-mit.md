@@ -15,7 +15,7 @@ decide how "free/open-source" relates to the paid private-page subscription.
   subscription. Privacy is a capability of the software; anyone running their own instance gets
   it for free.
 - **The USD $10/month private-page subscription is a server-side deployment policy of the
-  hosted service at ask.megabyte.space — not a client flag or a licensed feature.** The code
+  hosted service at fuegol.ink — not a client flag or a licensed feature.** The code
   contains no license gate; the hosted deployment chooses to require Stripe entitlement before
   provisioning a private room. A self-hoster simply doesn't run that policy.
 

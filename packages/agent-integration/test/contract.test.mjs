@@ -76,12 +76,12 @@ test('ROUTES match the frozen contract shapes', () => {
 });
 
 test('parseRoomUrl resolves slug, id, and bare id forms', () => {
-  assert.deepEqual(mod.parseRoomUrl('https://ask.megabyte.space/sunny-harbor'), {
-    origin: 'https://ask.megabyte.space',
+  assert.deepEqual(mod.parseRoomUrl('https://fuegol.ink/sunny-harbor'), {
+    origin: 'https://fuegol.ink',
     roomId: undefined,
     slug: 'sunny-harbor',
   });
-  const byId = mod.parseRoomUrl(`https://ask.megabyte.space/rooms/${ROOM_ID}`);
+  const byId = mod.parseRoomUrl(`https://fuegol.ink/rooms/${ROOM_ID}`);
   assert.equal(byId.roomId, ROOM_ID);
   const bare = mod.parseRoomUrl(ROOM_ID);
   assert.equal(bare.roomId, ROOM_ID);

@@ -346,7 +346,7 @@ function originOf(u) {
 
 /**
  * Parse a room URL into { origin, slug } OR { origin, roomId }.
- * Accepts: https://ask.megabyte.space/<slug>, .../rooms/<rm_…>, or a bare room id.
+ * Accepts: https://fuegol.ink/<slug>, .../rooms/<rm_…>, or a bare room id.
  */
 function parseRoomUrl(roomUrl) {
   if (/^rm_[0-9a-z]{20,32}$/.test(roomUrl)) {
@@ -1404,7 +1404,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = `ask — portable Ask agent helper (ask.megabyte.space)
+const USAGE = `ask — portable Ask agent helper (fuegol.ink)
 
 Usage: node bin/ask.mjs <command> [options]
 
@@ -1424,7 +1424,7 @@ Global:
   --json              Machine-readable output on stdout (human summary on stderr)
 
 Env:
-  ASK_SERVICE_ORIGIN  Override the service base origin (e.g. https://ask.megabyte.space)
+  ASK_SERVICE_ORIGIN  Override the service base origin (e.g. https://fuegol.ink)
   ASK_AGENT_NAME      Self-reported agent name used at enrollment
   NO_COLOR            Disable ANSI color`;
 

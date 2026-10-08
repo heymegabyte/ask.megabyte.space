@@ -1,7 +1,7 @@
 # @ask/agent-integration
 
 Portable, host-agnostic integration that keeps a coding project aligned with the
-answers humans give on its **Ask** room (`ask.megabyte.space`). It ships three
+answers humans give on its **Ask** room (`fuegol.ink`). It ships three
 things:
 
 1. **A universal skill** (`SKILL.md`, agentskills.io spec) — the recurring loop an
@@ -46,7 +46,7 @@ node .ask/bin/ask.mjs uninstall
 ```bash
 # One-time: enroll this project against a room. Persists room identity to
 # .ask/project.json (committable) and credentials/cursors to .ask/local/ (gitignored).
-node .ask/bin/ask.mjs connect https://ask.megabyte.space/rooms/rm_xxxxxxxxxxxxxxxxxxxx
+node .ask/bin/ask.mjs connect https://fuegol.ink/rooms/rm_xxxxxxxxxxxxxxxxxxxx
 
 # The workhorse: cursor-based delta pull of /changes. Downloads newly-answered
 # questions + decisions, folds durable summaries into docs/ask/*, appends to a

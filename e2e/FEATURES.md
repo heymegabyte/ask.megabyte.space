@@ -1,6 +1,6 @@
 # Ask — E2E / Feature Coverage
 
-Golden-path coverage for **ask.megabyte.space**. Two layers:
+Golden-path coverage for **fuegol.ink**. Two layers:
 
 - **Worker + Room DO** (`apps/ask/test/*.spec.ts`) — `@cloudflare/vitest-pool-workers`, `SELF` from `cloudflare:test`, real Miniflare D1 + Durable Object. Hermetic (fresh room per test).
 - **Browser E2E** (`e2e/golden/*.spec.ts`) — real Chromium via Playwright against the live PROD deploy, homepage-start, navigate via clicks, questions seeded through the real API. 6 viewports (375/390/768/1024/1280/1920). Screenshots → `e2e/screenshots/<test>/<step>.png`.

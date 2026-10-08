@@ -1,14 +1,14 @@
 {
-  "name": "ask.megabyte.space",
+  "name": "fuegol.ink",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "description": "Ask — answer the questions your coding agents should have been asking all along.",
-  "homepage": "https://ask.megabyte.space",
+  "homepage": "https://fuegol.ink",
   "repository": {
     "type": "git",
-    "url": "https://github.com/heymegabyte/ask.megabyte.space.git"
+    "url": "https://github.com/heymegabyte/fuegol.ink.git"
   },
   "packageManager": "pnpm@11.28.2",
   "engines": {

@@ -43,4 +43,4 @@ Increment 1 — the core free loop, plus the full project documentation set.
 - Native MCP — Increment 4.
 - R2 / Queues / Workflows / Workers AI enrichment — Increment 5.
 
-[0.1.0]: https://github.com/heymegabyte/ask.megabyte.space/releases/tag/v0.1.0
+[0.1.0]: https://github.com/heymegabyte/fuegol.ink/releases/tag/v0.1.0

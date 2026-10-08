@@ -681,7 +681,7 @@ export function Room({ identifier, onToast = noop }: Props) {
               <p className="min-w-0 flex-1 leading-relaxed">
                 Questions from multiple repositories are mixed on this page. Connect one git repo
                 per page (
-                <span className="ask-mono text-amber-100">ask.megabyte.space/owner/repo</span>) to
+                <span className="ask-mono text-amber-100">fuegol.ink/owner/repo</span>) to
                 keep them separate.
               </p>
               <Button
