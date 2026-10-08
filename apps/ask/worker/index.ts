@@ -23,6 +23,7 @@ import type { Env, RateLimiter } from './env';
 import { RoomDurableObject, RoomError } from './room';
 import { newRoomId, newSecret, sha256 } from './ids';
 import { generateSlug, isValidSlug, normalizeSlug } from './slugs';
+import { renderRoomOg } from './og';
 
 const ADAPTER_VERSION = '0.1.0';
 const SID_COOKIE = 'ask_sid';
@@ -535,9 +536,66 @@ app.post('/api/billing/stripe/webhook', (c) =>
   }),
 );
 
-app.notFound((c) => {
-  if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/integrations/')) {
+// ── dynamic per-room OG card — edge-rendered (satori); public rooms only (§28) ──
+app.get('/og/:name', async (c) => {
+  const slug = c.req.param('name').replace(/\.png$/i, '');
+  const origin = c.env.SERVICE_ORIGIN || new URL(c.req.url).origin;
+  const row = await roomRow(c.env, slug).catch(() => null);
+  if (!row) return err(c, 'room_not_found', 404);
+  if (row.visibility === 'private') {
+    // Brand-only card — never leak a private room's counts/understanding (§12, §14).
+    return renderRoomOg(c.env, origin, { slug: row.current_slug, openCount: 0, answeredCount: 0 });
+  }
+  const s = await roomStub(c.env, row.room_id)
+    .dashboardSummary()
+    .catch(() => null);
+  return renderRoomOg(c.env, origin, {
+    slug: row.current_slug,
+    repo: s?.repos?.[0] ?? null,
+    openCount: s?.openCount ?? 0,
+    answeredCount: s?.answeredCount ?? 0,
+    summary: s?.understanding?.summary ?? null,
+  });
+});
+
+/** HTMLRewriter handler: set one attribute to a fixed value (per-room OG meta injection). */
+class AttrSetter {
+  constructor(
+    private readonly attr: string,
+    private readonly value: string,
+  ) {}
+  element(el: { setAttribute(name: string, value: string): void }) {
+    el.setAttribute(this.attr, this.value);
+  }
+}
+
+app.notFound(async (c) => {
+  const path = c.req.path;
+  if (path.startsWith('/api/') || path.startsWith('/integrations/')) {
     return err(c, 'not_found', 404);
+  }
+  // Per-room OG/meta injection (§28): a single-segment slug that resolves to a PUBLIC room
+  // gets its shared-link card + title rewritten into the SPA shell at the edge (HTMLRewriter).
+  const seg = path.replace(/^\/+|\/+$/g, '');
+  if (seg && !seg.includes('/') && !seg.includes('.')) {
+    const row = await roomRow(c.env, seg).catch(() => null);
+    if (row && row.visibility !== 'private') {
+      const origin = c.env.SERVICE_ORIGIN || new URL(c.req.url).origin;
+      const ogUrl = `${origin}/og/${row.current_slug}.png`;
+      const pageUrl = `${origin}/${row.current_slug}`;
+      const title = `ask/${row.current_slug} — Ask`;
+      const shell = await c.env.ASSETS.fetch(new URL('/index.html', c.req.url));
+      return new HTMLRewriter()
+        .on('meta[property="og:image"]', new AttrSetter('content', ogUrl))
+        .on('meta[name="twitter:image"]', new AttrSetter('content', ogUrl))
+        .on('meta[property="og:image:alt"]', new AttrSetter('content', title))
+        .on('meta[name="twitter:image:alt"]', new AttrSetter('content', title))
+        .on('meta[property="og:url"]', new AttrSetter('content', pageUrl))
+        .on('meta[property="og:title"]', new AttrSetter('content', title))
+        .on('meta[name="twitter:title"]', new AttrSetter('content', title))
+        .on('link[rel="canonical"]', new AttrSetter('href', pageUrl))
+        .transform(shell);
+    }
   }
   // Non-API unmatched paths are served the SPA shell by the assets layer.
   return c.env.ASSETS.fetch(c.req.raw);

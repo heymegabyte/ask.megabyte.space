@@ -10,7 +10,11 @@
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/integrations/*", "/mcp", "/mcp/*"],
+    // Worker runs first for EVERY request so it can (a) render dynamic per-room OG
+    // cards at /og/:slug and (b) inject per-room OG/meta into the SPA shell for room
+    // pages via HTMLRewriter. Static assets still resolve through notFound → ASSETS,
+    // so correctness holds for every path (the slug branch guards against asset paths).
+    "run_worker_first": true,
   },
   "observability": {
     "enabled": true,
