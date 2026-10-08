@@ -175,6 +175,78 @@ function groupByRepo(ordered: Question[]): Array<[string, Question[]]> {
   return [...groups.entries()];
 }
 
+/** Click a control inside a specific question card (keyboard flow → the card's own handler). */
+function clickInCard(questionId: string, testid: string) {
+  const el = document.querySelector(
+    `[data-question-id="${questionId}"] [data-testid="${testid}"]`,
+  ) as HTMLButtonElement | null;
+  el?.click();
+}
+
+/** The option a single-choice recommendation points at (fuzzy label match), if any (#12). */
+function suggestionOption(q: Question) {
+  if (q.kind !== 'single' || !q.recommendation) return undefined;
+  const rec = q.recommendation.toLowerCase();
+  return q.options.find((o) => o.label && rec.includes(o.label.toLowerCase()));
+}
+
+/** Keyboard-shortcuts help overlay (#26) — toggled with `?`, dismissed with Esc / backdrop click. */
+function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  const keys: [string, string][] = [
+    ['j · ↓', 'Focus next question'],
+    ['k · ↑', 'Focus previous'],
+    ['1 – 9', 'Pick an option'],
+    ['a', 'Use the suggestion'],
+    ['Enter', 'Submit answer'],
+    ['s', 'Skip for now'],
+    ['d', 'Let the agent decide'],
+    ['?', 'Toggle this help'],
+  ];
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      data-testid="shortcuts-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="ask-enter w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0b18]/95 p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <Heading level={2} className="ask-h2 text-lg">
+            Keyboard shortcuts
+          </Heading>
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="square"
+            icon={X}
+            aria-label="Close shortcuts"
+            data-testid="shortcuts-close"
+            onClick={onClose}
+          />
+        </div>
+        <dl className="flex flex-col gap-2.5">
+          {keys.map(([k, label]) => (
+            <div key={k} className="flex items-center justify-between gap-4">
+              <dt className="text-sm text-white/75">{label}</dt>
+              <dd>
+                <kbd className="ask-mono rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-xs text-white/80">
+                  {k}
+                </kbd>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 export function Room({ identifier, onToast = noop }: Props) {
   const { load, connection, pending, submitAnswer, setRoom, patchQuestion, refresh } =
     useRoom(identifier);
@@ -193,6 +265,19 @@ export function Room({ identifier, onToast = noop }: Props) {
   const [setupPrompt, setSetupPrompt] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false); // egg 4 — first-answer pulse
   const zen = useZenMode(); // egg 5 — calm mode (hide chrome, center question)
+
+  // ⭐#6/#7/#26 — keyboard decision flow state + refs (read by the global keydown effect).
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const focusedIdRef = useRef<string | null>(null);
+  const draftsRef = useRef(drafts);
+  const flowRef = useRef<{ ordered: Question[]; answeredIds: Set<string>; tab: TabKey }>({
+    ordered: [],
+    answeredIds: new Set(),
+    tab: 'questions',
+  });
+  focusedIdRef.current = focusedId;
+  draftsRef.current = drafts;
 
   // Egg 4 — the first time this room has a committed answer, pulse once + microcopy.
   const committedAnswers = load.status === 'ready' ? load.store.answers.length : 0;
@@ -224,6 +309,132 @@ export function Room({ identifier, onToast = noop }: Props) {
   }, [load]);
 
   const roomId = load.status === 'ready' ? load.store.room?.id : undefined;
+
+  // ⭐#11 — draft autosave: persist unsent answers so a reload never loses typed work.
+  const draftsHydrated = useRef<string | null>(null);
+  useEffect(() => {
+    if (!roomId || draftsHydrated.current === roomId) return;
+    draftsHydrated.current = roomId;
+    try {
+      const raw = localStorage.getItem(`ask:drafts:${roomId}`);
+      if (raw) {
+        const saved = JSON.parse(raw) as Record<string, QuestionDraft>;
+        setDrafts((cur) => ({ ...saved, ...cur })); // in-session edits win over stored
+      }
+    } catch {
+      /* corrupt / absent storage — ignore */
+    }
+  }, [roomId]);
+  useEffect(() => {
+    if (!roomId) return;
+    try {
+      const kept = Object.entries(drafts).filter(
+        ([, d]) => d && (d.selected.length || d.text || d.number || d.link),
+      );
+      if (kept.length) {
+        localStorage.setItem(`ask:drafts:${roomId}`, JSON.stringify(Object.fromEntries(kept)));
+      } else {
+        localStorage.removeItem(`ask:drafts:${roomId}`);
+      }
+    } catch {
+      /* quota / unavailable — ignore */
+    }
+  }, [drafts, roomId]);
+
+  // ⭐#6 — keyboard decision flow: j/k focus · 1-9 pick · a use-suggestion · Enter submit · s/d · ? help.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const typing =
+        !!t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable);
+      if (e.key === 'Escape') {
+        setShowShortcuts(false);
+        return;
+      }
+      if (e.key === '?' && !typing) {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+        return;
+      }
+      const { ordered, answeredIds, tab } = flowRef.current;
+      if (typing || tab !== 'questions' || !ordered.length) return;
+      const curId = focusedIdRef.current;
+      const curIdx = ordered.findIndex((q) => q.id === curId);
+      const hadFocus = curIdx >= 0;
+      const firstTarget = ordered.find((q) => !answeredIds.has(q.id)) ?? ordered[0];
+      const focusAt = (i: number) => {
+        const q = ordered[Math.max(0, Math.min(i, ordered.length - 1))];
+        if (q) setFocusedId(q.id);
+      };
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusAt(hadFocus ? curIdx + 1 : ordered.indexOf(firstTarget));
+        return;
+      }
+      if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        focusAt(hadFocus ? curIdx - 1 : ordered.indexOf(firstTarget));
+        return;
+      }
+      const q = hadFocus ? ordered[curIdx] : firstTarget;
+      if (!q) return;
+      // Commit keys require an already-focused card (prevents an accidental submit/skip).
+      const commit = e.key === 'Enter' || e.key === 's' || e.key === 'd';
+      if (!hadFocus) {
+        setFocusedId(q.id);
+        if (commit) {
+          e.preventDefault();
+          return;
+        }
+      }
+      if (/^[1-9]$/.test(e.key) && q.kind === 'single') {
+        const opt = q.options[Number(e.key) - 1];
+        if (opt) {
+          e.preventDefault();
+          setDraft(q.id, { ...(draftsRef.current[q.id] ?? emptyDraft), selected: [opt.id] });
+        }
+        return;
+      }
+      if (e.key === 'a') {
+        const opt = suggestionOption(q);
+        if (opt) {
+          e.preventDefault();
+          setDraft(q.id, { ...(draftsRef.current[q.id] ?? emptyDraft), selected: [opt.id] });
+        }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        clickInCard(q.id, 'answer-submit');
+        return;
+      }
+      if (e.key === 's') {
+        e.preventDefault();
+        clickInCard(q.id, 'answer-skip');
+        return;
+      }
+      if (e.key === 'd') {
+        e.preventDefault();
+        clickInCard(q.id, 'answer-delegate');
+        return;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setDraft]);
+
+  // Scroll the keyboard-focused card into view when it changes.
+  useEffect(() => {
+    if (!focusedId) return;
+    document
+      .querySelector(`[data-question-id="${focusedId}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedId]);
 
   const copySetupPrompt = useCallback(async () => {
     if (load.status !== 'ready' || !load.store.room) return;
@@ -448,6 +659,8 @@ export function Room({ identifier, onToast = noop }: Props) {
 
   const answeredIds = new Set(store.answers.map((a) => a.questionId));
   const unanswered = ordered.filter((q) => !answeredIds.has(q.id)).length;
+  // Expose the live question set to the global keyboard handler (effect reads this ref).
+  flowRef.current = { ordered, answeredIds, tab };
 
   // AI quality verdicts, keyed by question id — drives the subtle "could be sharper" hint (§6).
   const qualityByQuestion = new Map<string, QuestionQuality>(
@@ -549,6 +762,7 @@ export function Room({ identifier, onToast = noop }: Props) {
           draft={draftFor(q.id)}
           compact={compact}
           emphasis={emphasis}
+          focused={q.id === focusedId}
           onDraftChange={(next) => setDraft(q.id, next)}
           onSubmit={(value, text) => void handleSubmit(q, value, text)}
           onExplainMore={() => explainMore(q)}
@@ -637,6 +851,8 @@ export function Room({ identifier, onToast = noop }: Props) {
           onToast={onToast}
         />
       </div>
+
+      <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
         <div data-zen-hide className="flex flex-col gap-5">
@@ -727,22 +943,59 @@ export function Room({ identifier, onToast = noop }: Props) {
             questionCount={ordered.length}
             unanswered={unanswered}
           />
-          {/* Mobile-only focus toggle — one-question-at-a-time flow. */}
-          {tab === 'questions' && ordered.length > 1 ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={Lightning}
-              className="sm:hidden"
-              data-testid="focus-toggle"
-              onClick={() => {
-                setFocusIndex(0);
-                setFocusMode((f) => !f);
-              }}
-            >
-              {focusMode ? 'List' : 'Focus'}
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-2.5">
+            {/* ⭐#7 — decision progress ("N of M decided"). */}
+            {tab === 'questions' && ordered.length ? (
+              <span
+                data-testid="decision-progress"
+                className="ask-mono hidden items-center gap-2 text-xs text-white/55 sm:inline-flex"
+                title={`${ordered.length - unanswered} of ${ordered.length} decided`}
+              >
+                <span className="text-[color:var(--ask-accent)]">
+                  {ordered.length - unanswered}
+                </span>
+                /{ordered.length}
+                <span className="block h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
+                  <span
+                    className="block h-full rounded-full bg-[color:var(--ask-accent)] transition-[width] duration-500"
+                    style={{
+                      width: `${Math.round(((ordered.length - unanswered) / ordered.length) * 100)}%`,
+                    }}
+                  />
+                </span>
+              </span>
+            ) : null}
+            {/* ⭐#26 — keyboard shortcuts help. */}
+            {tab === 'questions' && ordered.length ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="square"
+                aria-label="Keyboard shortcuts"
+                data-testid="shortcuts-open"
+                className="hidden sm:inline-flex"
+                onClick={() => setShowShortcuts(true)}
+              >
+                <span className="ask-mono text-sm text-white/70">?</span>
+              </Button>
+            ) : null}
+            {/* Mobile-only focus toggle — one-question-at-a-time flow. */}
+            {tab === 'questions' && ordered.length > 1 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={Lightning}
+                className="sm:hidden"
+                data-testid="focus-toggle"
+                onClick={() => {
+                  setFocusIndex(0);
+                  setFocusMode((f) => !f);
+                }}
+              >
+                {focusMode ? 'List' : 'Focus'}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {tab === 'questions' ? (

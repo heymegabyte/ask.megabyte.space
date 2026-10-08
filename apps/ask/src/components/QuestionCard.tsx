@@ -61,6 +61,8 @@ interface Props {
   /** A "Now" card — gets the cyan accent hairline to mark it as active/high-value. */
   emphasis?: boolean;
   autoFocus?: boolean;
+  /** Keyboard-focused in the decision flow — gets a bright accent ring. */
+  focused?: boolean;
 }
 
 /** Image-comparison picker: a responsive grid of option thumbnails, single-select. */
@@ -332,6 +334,7 @@ export function QuestionCard({
   compact = false,
   emphasis = false,
   autoFocus,
+  focused = false,
 }: Props) {
   const controlId = useId();
   const [explainState, setExplainState] = useState<'idle' | 'asking' | 'requested' | 'sent'>(
@@ -347,6 +350,11 @@ export function QuestionCard({
   const isUnsentDraft = hasInput && !answer && !sending;
   // A saved answer (no unsent draft) renders as ANSWERED on load — the core of "it should show up as answered on reload".
   const isAnswered = Boolean(answer) && !isUnsentDraft && !sending;
+  const ringClass = focused
+    ? 'ring-2 ring-[color:var(--ask-accent)]'
+    : emphasis && !question.blocksWork
+      ? 'ring-1 ring-[color:var(--ask-accent-line)]'
+      : '';
   // Leave edit mode whenever a fresh committed answer arrives, so the answered view stays authoritative.
   useEffect(() => {
     if (answer) setEditing(false);
@@ -371,8 +379,8 @@ export function QuestionCard({
       className={[
         'ask-enter flex flex-col gap-4',
         compact ? 'p-5 sm:p-6' : 'p-5',
-        // Active "Now" cards get a soft cyan accent ring; blockers keep the warm glow.
-        emphasis && !question.blocksWork ? 'ring-1 ring-[color:var(--ask-accent-line)]' : '',
+        // Keyboard focus → bright ring; else active "Now" cards get the soft accent ring.
+        ringClass,
         isUnsentDraft ? 'ask-draft pl-[18px]' : '',
       ].join(' ')}
     >

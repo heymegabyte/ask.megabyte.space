@@ -10,9 +10,10 @@
  * Dark-consistent, AA-contrast, keyboard-operable (every control is a real button
  * with the app-wide focus-visible ring).
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@cloudflare/kumo';
 import {
+  Check,
   ClipboardText as ClipboardIcon,
   FolderSimple,
   GlobeHemisphereWest,
@@ -46,9 +47,15 @@ function PromptCard({
   onToast: (t: ToastInput) => void;
 }) {
   const Icon = icon;
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const copy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setCopied(false), 1600);
       onToast({
         title: 'Prompt copied',
         description: 'Paste it into your coding agent.',
@@ -80,11 +87,12 @@ function PromptCard({
         <Button
           variant="primary"
           size="sm"
-          icon={ClipboardIcon}
+          icon={copied ? Check : ClipboardIcon}
           data-testid={`${testid}-copy`}
+          aria-live="polite"
           onClick={() => void copy()}
         >
-          <span className="min-w-[4ch] text-center">Copy</span>
+          <span className="min-w-[4.5ch] text-center">{copied ? 'Copied' : 'Copy'}</span>
         </Button>
       </div>
 

@@ -128,6 +128,15 @@ export function Dashboard({ onOpen, onToast = noop }: Props) {
   }
 
   const { rooms } = state;
+  // Triage: pages that need YOU (open questions) float to the top, most-open first.
+  const sortedRooms = [...rooms].sort((a, b) => {
+    const au = a.openCount > 0 ? 1 : 0;
+    const bu = b.openCount > 0 ? 1 : 0;
+    if (au !== bu) return bu - au;
+    if (a.openCount !== b.openCount) return b.openCount - a.openCount;
+    return (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '');
+  });
+  const needsYou = rooms.filter((r) => r.openCount > 0).length;
 
   return (
     <div className="ask-shell min-h-dvh">
@@ -202,10 +211,19 @@ export function Dashboard({ onOpen, onToast = noop }: Props) {
                   {rooms.length} {rooms.length === 1 ? 'page' : 'pages'}
                 </Heading>
               </div>
+              {needsYou > 0 ? (
+                <span
+                  data-testid="dashboard-needs-you"
+                  className="ask-pulse inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[color:var(--ask-accent-soft)] px-3 py-1 text-sm font-medium text-[color:var(--ask-accent)] ring-1 ring-[color:var(--ask-accent-line)]"
+                >
+                  <span className="relative inline-block h-2 w-2 rounded-full bg-current" />
+                  {needsYou} {needsYou === 1 ? 'needs you' : 'need you'}
+                </span>
+              ) : null}
             </div>
             <ul className="grid gap-4 sm:grid-cols-2">
-              {rooms.map((r) => (
-                <RoomCardItem key={r.room.id} room={r} onOpen={onOpen} />
+              {sortedRooms.map((r) => (
+                <RoomCardItem key={r.room.id} room={r} onOpen={onOpen} urgent={r.openCount > 0} />
               ))}
             </ul>
           </section>
@@ -216,14 +234,24 @@ export function Dashboard({ onOpen, onToast = noop }: Props) {
 }
 
 /** One room card in the dashboard grid — a link to `/{slug}` with the AI summary + counts. */
-function RoomCardItem({ room: r, onOpen }: { room: MeRoom; onOpen: (slug: string) => void }) {
+function RoomCardItem({
+  room: r,
+  onOpen,
+  urgent,
+}: {
+  room: MeRoom;
+  onOpen: (slug: string) => void;
+  urgent?: boolean;
+}) {
   const slug = r.room.slug;
   const accentHue = slugAccentHue(slug);
   return (
     <Card
       as="li"
       interactive
-      className="ask-enter flex flex-col"
+      className={['ask-enter flex flex-col', urgent ? 'ring-1 ring-[color:var(--ask-accent-line)]' : ''].join(
+        ' ',
+      )}
       style={{ ['--ask-accent-h' as string]: String(accentHue) }}
     >
       <a
