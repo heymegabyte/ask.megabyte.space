@@ -82,6 +82,11 @@ function useKeySequence(sequence: string[], onMatch: () => void): void {
 /** The shortcuts the legend documents — real, wired behaviors. */
 const SHORTCUTS: { keys: string; label: string }[] = [
   { keys: '?', label: 'Show / hide this shortcuts panel' },
+  { keys: 'j · k', label: 'Focus next / previous question' },
+  { keys: '1 – 9', label: 'Pick an option on the focused question' },
+  { keys: 'a', label: 'Use the suggested answer' },
+  { keys: 'Enter', label: 'Submit the focused answer' },
+  { keys: 's · d', label: 'Skip · let the agent decide' },
   { keys: '← →', label: 'Switch tabs (Questions · Decisions · Activity)' },
   { keys: 'zen', label: 'Toggle calm mode — hide chrome, center the question' },
   { keys: '↑↑↓↓←→←→ B A', label: 'Stir the void' },

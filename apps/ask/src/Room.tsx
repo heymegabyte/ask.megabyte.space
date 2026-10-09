@@ -190,63 +190,6 @@ function suggestionOption(q: Question) {
   return q.options.find((o) => o.label && rec.includes(o.label.toLowerCase()));
 }
 
-/** Keyboard-shortcuts help overlay (#26) — toggled with `?`, dismissed with Esc / backdrop click. */
-function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
-  if (!open) return null;
-  const keys: [string, string][] = [
-    ['j · ↓', 'Focus next question'],
-    ['k · ↑', 'Focus previous'],
-    ['1 – 9', 'Pick an option'],
-    ['a', 'Use the suggestion'],
-    ['Enter', 'Submit answer'],
-    ['s', 'Skip for now'],
-    ['d', 'Let the agent decide'],
-    ['?', 'Toggle this help'],
-  ];
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Keyboard shortcuts"
-      data-testid="shortcuts-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="ask-enter w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0b18]/95 p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <Heading level={2} className="ask-h2 text-lg">
-            Keyboard shortcuts
-          </Heading>
-          <Button
-            variant="ghost"
-            size="sm"
-            shape="square"
-            icon={X}
-            aria-label="Close shortcuts"
-            data-testid="shortcuts-close"
-            onClick={onClose}
-          />
-        </div>
-        <dl className="flex flex-col gap-2.5">
-          {keys.map(([k, label]) => (
-            <div key={k} className="flex items-center justify-between gap-4">
-              <dt className="text-sm text-white/75">{label}</dt>
-              <dd>
-                <kbd className="ask-mono rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-xs text-white/80">
-                  {k}
-                </kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
-  );
-}
-
 export function Room({ identifier, onToast = noop }: Props) {
   const { load, connection, pending, submitAnswer, setRoom, patchQuestion, refresh } =
     useRoom(identifier);
@@ -268,7 +211,6 @@ export function Room({ identifier, onToast = noop }: Props) {
 
   // ⭐#6/#7/#26 — keyboard decision flow state + refs (read by the global keydown effect).
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [showShortcuts, setShowShortcuts] = useState(false);
   const focusedIdRef = useRef<string | null>(null);
   const draftsRef = useRef(drafts);
   const flowRef = useRef<{ ordered: Question[]; answeredIds: Set<string>; tab: TabKey }>({
@@ -352,15 +294,7 @@ export function Room({ identifier, onToast = noop }: Props) {
           t.tagName === 'TEXTAREA' ||
           t.tagName === 'SELECT' ||
           t.isContentEditable);
-      if (e.key === 'Escape') {
-        setShowShortcuts(false);
-        return;
-      }
-      if (e.key === '?' && !typing) {
-        e.preventDefault();
-        setShowShortcuts((s) => !s);
-        return;
-      }
+      // The `?` legend + Esc are owned by <Eggs/> (one shared shortcuts panel).
       const { ordered, answeredIds, tab } = flowRef.current;
       if (typing || tab !== 'questions' || !ordered.length) return;
       const curId = focusedIdRef.current;
@@ -852,8 +786,6 @@ export function Room({ identifier, onToast = noop }: Props) {
         />
       </div>
 
-      <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
-
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
         <div data-zen-hide className="flex flex-col gap-5">
           <ConnectionPanel
@@ -964,20 +896,6 @@ export function Room({ identifier, onToast = noop }: Props) {
                   />
                 </span>
               </span>
-            ) : null}
-            {/* ⭐#26 — keyboard shortcuts help. */}
-            {tab === 'questions' && ordered.length ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                shape="square"
-                aria-label="Keyboard shortcuts"
-                data-testid="shortcuts-open"
-                className="hidden sm:inline-flex"
-                onClick={() => setShowShortcuts(true)}
-              >
-                <span className="ask-mono text-sm text-white/70">?</span>
-              </Button>
             ) : null}
             {/* Mobile-only focus toggle — one-question-at-a-time flow. */}
             {tab === 'questions' && ordered.length > 1 ? (

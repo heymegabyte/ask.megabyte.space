@@ -21,12 +21,13 @@ test.describe('power features', () => {
     const card = page.getByTestId('question-card').first();
     await expect(card).toBeVisible({ timeout: 30_000 });
 
-    // `?` opens the shortcuts overlay; Esc closes it.
+    // `?` opens the (single, shared) shortcuts legend — now documenting the decision keys.
     await page.keyboard.press('?');
-    await expect(page.getByTestId('shortcuts-overlay')).toBeVisible();
+    await expect(page.getByTestId('shortcut-legend')).toBeVisible();
+    await expect(page.getByTestId('shortcut-legend')).toContainText(/focus next/i);
     await shot(page, 'power', '1-shortcuts');
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('shortcuts-overlay')).toBeHidden();
+    await expect(page.getByTestId('shortcut-legend')).toBeHidden();
 
     // Pick option 1 (Cloudflare D1) with the number key → submit enables.
     await page.keyboard.press('1');
